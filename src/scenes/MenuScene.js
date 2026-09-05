@@ -24,59 +24,67 @@ class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.option(cx, cy - 20, '1', 'ONE PLAYER', 'arrows or WASD', 'player_1');
-    this.option(cx, cy + 70, '2', 'TWO PLAYER', 'P1 arrows · P2 WASD', 'player_2');
+    this.option(cx, cy - 40, '1', 'ONE PLAYER', 'arrows or WASD', 'solo');
+    this.option(cx, cy + 40, '2', 'TWO PLAYER', 'co-op: P1 arrows · P2 WASD', 'coop');
+    this.option(cx, cy + 120, '3', 'VERSUS', 'attendant arrows · moped WASD', 'versus');
 
     this.add
-      .text(cx, cy + 168, 'press 1 or 2', {
+      .text(cx, cy + 184, 'press 1, 2 or 3', {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: '#6fa8d4',
       })
       .setOrigin(0.5);
 
-    this.input.keyboard.on('keydown-ONE', () => this.start(1));
-    this.input.keyboard.on('keydown-TWO', () => this.start(2));
-    this.input.keyboard.on('keydown-NUMPAD_ONE', () => this.start(1));
-    this.input.keyboard.on('keydown-NUMPAD_TWO', () => this.start(2));
+    const bind = (keyName, mode) => {
+      this.input.keyboard.on(`keydown-${keyName}`, () => this.start(mode));
+    };
+    bind('ONE', 'solo');
+    bind('TWO', 'coop');
+    bind('THREE', 'versus');
+    bind('NUMPAD_ONE', 'solo');
+    bind('NUMPAD_TWO', 'coop');
+    bind('NUMPAD_THREE', 'versus');
   }
 
-  option(cx, y, key, title, hint, texture) {
+  option(cx, y, key, title, hint, mode) {
     const box = this.add
-      .rectangle(cx, y, 460, 68, 0x1f242b)
+      .rectangle(cx, y, 500, 68, 0x1f242b)
       .setStrokeStyle(2, 0x3a4550)
       .setInteractive({ useHandCursor: true });
     box.on('pointerover', () => box.setStrokeStyle(2, 0x6fa8d4));
     box.on('pointerout', () => box.setStrokeStyle(2, 0x3a4550));
-    box.on('pointerup', () => this.start(Number(key)));
+    box.on('pointerup', () => this.start(mode));
 
     this.add
-      .text(cx - 200, y, key, { fontFamily: 'monospace', fontSize: '30px', color: '#6fa8d4' })
+      .text(cx - 220, y, key, { fontFamily: 'monospace', fontSize: '30px', color: '#6fa8d4' })
       .setOrigin(0.5);
     this.add
-      .text(cx - 150, y - 11, title, {
+      .text(cx - 180, y - 11, title, {
         fontFamily: 'monospace',
         fontSize: '19px',
         color: '#e8eef5',
       })
       .setOrigin(0, 0.5);
     this.add
-      .text(cx - 150, y + 12, hint, {
+      .text(cx - 180, y + 12, hint, {
         fontFamily: 'monospace',
         fontSize: '13px',
         color: '#8a97a6',
       })
       .setOrigin(0, 0.5);
 
-    // A little cast shot of who you are playing.
-    this.add.image(cx + 176, y, texture).setRotation(-Math.PI / 2).setScale(1.6);
-    if (key === '2') {
-      this.add.image(cx + 140, y, 'player_1').setRotation(-Math.PI / 2).setScale(1.6);
+    // A little cast shot of who is playing.
+    this.add.image(cx + 196, y, 'player_1').setRotation(-Math.PI / 2).setScale(1.5);
+    if (mode === 'coop') {
+      this.add.image(cx + 152, y, 'player_2').setRotation(-Math.PI / 2).setScale(1.5);
+    } else if (mode === 'versus') {
+      this.add.image(cx + 140, y, 'moped').setScale(1.1);
     }
   }
 
-  start(playerCount) {
-    this.registry.set('playerCount', playerCount);
+  start(mode) {
+    this.registry.set('mode', mode);
     this.scene.start('Game');
     this.scene.launch('Hud');
   }

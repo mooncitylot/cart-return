@@ -1,30 +1,40 @@
 // One lot attendant. Holds the per-player state that used to live on the scene,
-// so solo and two-player runs are the same code path with a different count.
+// so solo, co-op and versus runs are the same code path with a different roster.
 class LotPlayer {
-  constructor(scene, index, keySets) {
+  constructor(scene, index, keySets, opts = {}) {
     this.scene = scene;
     this.index = index;
-    this.label = `P${index + 1}`;
+    this.label = opts.label || `P${index + 1}`;
+    this.kind = opts.kind || 'attendant';
+    this.canPushCarts = opts.canPushCarts !== false;
     this.keySets = keySets; // each: { up, down, left, right } Phaser Keys
-    // Solo starts dead centre of the return zone; two players start either side.
-    const offset = scene.playerCount > 1 ? (index === 0 ? -50 : 50) : 0;
-    this.spawn = { x: CFG.dropZone.x + offset, y: CFG.player.spawn.y };
 
-    this.tint = index === 0 ? 0x6bd6a5 : 0xf5b45f;
+    // Solo starts dead centre of the return zone; two players start either side.
+    const offset = scene.playerCount > 1 ? (index === 0 ? -60 : 60) : 0;
+    this.spawn = opts.spawn || { x: CFG.dropZone.x + offset, y: CFG.player.spawn.y };
+
+    this.tint = opts.tint || (index === 0 ? 0x6bd6a5 : 0xf5b45f);
     this.sprite = scene.physics.add
-      .image(this.spawn.x, this.spawn.y, `player_${index + 1}`)
-      .setDepth(8);
-    this.sprite.body.setSize(20, 20).setOffset(4, 2);
+      .image(this.spawn.x, this.spawn.y, opts.texture || `player_${index + 1}`)
+      .setDepth(opts.depth || 8);
+    const body = opts.bodyRadius || 10;
+    this.sprite.body.setCircle(
+      body,
+      this.sprite.width / 2 - body,
+      this.sprite.height / 2 - body
+    );
     this.sprite.setCollideWorldBounds(true);
 
     // Ring under the feet: tells you apart from the shoppers at a glance.
     this.marker = scene.add
-      .circle(this.spawn.x, this.spawn.y, 15)
+      .circle(this.spawn.x, this.spawn.y, opts.markerRadius || 15)
       .setStrokeStyle(2, this.tint, 0.85)
       .setDepth(7);
 
     this.facing = new Phaser.Math.Vector2(0, 1); // pushing away from the store
     this.train = [];
+    this.trail = [];
+    this.trailStep = 4; // px between recorded trail points
     this.score = 0;
     this.lives = CFG.lives;
     this.alive = true;
@@ -80,24 +90,43 @@ class LotPlayer {
     this.sprite.setRotation(v.angle());
   }
 
-  // Carts are pushed: they sit ahead of the player, strung out along the way
-  // they are facing, and swing around behind a turn.
+  // Where cart `index` of the train belongs when there is no trail to follow
+  // yet: strung out behind the player, opposite the way they are facing.
   cartTarget(index) {
     const dist = (index + 1) * CFG.cart.spacing + 12;
     return {
-      x: Phaser.Math.Clamp(this.x + this.facing.x * dist, 8, CFG.width - 8),
-      y: Phaser.Math.Clamp(this.y + this.facing.y * dist, 8, CFG.height - 8),
+      x: Phaser.Math.Clamp(this.x - this.facing.x * dist, 8, CFG.width - 8),
+      y: Phaser.Math.Clamp(this.y - this.facing.y * dist, 8, CFG.height - 8),
     };
   }
 
+  // Carts trail the player along the path actually walked, spaced by real
+  // distance travelled, so the train looks the same at any speed.
   updateTrain() {
     this.marker.setPosition(this.x, this.y);
-    const angle = this.facing.angle();
+
+    const head = this.trail[0];
+    if (!head || Phaser.Math.Distance.Between(head.x, head.y, this.x, this.y) >= this.trailStep) {
+      this.trail.unshift({ x: this.x, y: this.y, r: this.sprite.rotation });
+      const max =
+        Math.ceil(((CFG.cart.maxTrain + 1) * CFG.cart.spacing) / this.trailStep) + 8;
+      if (this.trail.length > max) this.trail.length = max;
+    }
+    if (this.train.length === 0) return;
+
+    let idx = 0;
+    let walked = 0;
     this.train.forEach((cart, i) => {
-      const t = this.cartTarget(i);
-      cart.sprite.x = Phaser.Math.Linear(cart.sprite.x, t.x, CFG.cart.followLerp);
-      cart.sprite.y = Phaser.Math.Linear(cart.sprite.y, t.y, CFG.cart.followLerp);
-      cart.sprite.rotation = Phaser.Math.Angle.RotateTo(cart.sprite.rotation, angle, 0.3);
+      const want = (i + 1) * CFG.cart.spacing;
+      while (idx < this.trail.length - 1 && walked < want) {
+        const a = this.trail[idx];
+        const b = this.trail[idx + 1];
+        walked += Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
+        idx += 1;
+      }
+      const point = this.trail[Math.min(idx, this.trail.length - 1)];
+      if (!point) return;
+      cart.sprite.setPosition(point.x, point.y).setRotation(point.r);
     });
   }
 
@@ -105,6 +134,7 @@ class LotPlayer {
     this.sprite.setPosition(this.spawn.x, this.spawn.y);
     this.marker.setPosition(this.spawn.x, this.spawn.y);
     this.sprite.body.setVelocity(0, 0);
+    this.trail.length = 0;
     this.stunUntil = now + 300;
     this.invulnUntil = now + invulnMs;
   }

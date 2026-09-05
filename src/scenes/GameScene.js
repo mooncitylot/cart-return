@@ -10,7 +10,8 @@ class GameScene extends Phaser.Scene {
   create() {
     this.physics.world.setBounds(0, 0, CFG.width, CFG.height);
 
-    this.playerCount = this.registry.get('playerCount') || 1;
+    this.mode = this.registry.get('mode') || 'solo';
+    this.playerCount = this.mode === 'solo' ? 1 : 2;
     this.level = 1;
     this.speedMul = 1;
     this.timeLeft = CFG.levelSeconds;
@@ -126,6 +127,9 @@ class GameScene extends Phaser.Scene {
         x += CFG.stallW
       ) {
         if (this.inCorral(x, cy) || this.inVerticalLane(x)) continue;
+        if (Phaser.Math.Distance.Between(x, cy, CFG.moped.spawn.x, CFG.moped.spawn.y) < 80) {
+          continue; // keep the versus car's start clear
+        }
         if (Math.random() > CFG.parkedFill) continue;
 
         // Body is the full texture rect, so nothing can be walked over.
@@ -437,15 +441,21 @@ class GameScene extends Phaser.Scene {
     };
     const wasdSet = { up: wasd.W, down: wasd.S, left: wasd.A, right: wasd.D };
 
-    // Solo answers to both key sets; two-player splits them.
-    const bindings =
-      this.playerCount === 1 ? [[arrowSet, wasdSet]] : [[arrowSet], [wasdSet]];
+    this.players = [];
+    if (this.mode === 'solo') {
+      // Solo answers to both key sets.
+      this.players.push(new LotPlayer(this, 0, [arrowSet, wasdSet]));
+    } else {
+      this.players.push(new LotPlayer(this, 0, [arrowSet]));
+      this.players.push(
+        this.mode === 'versus'
+          ? new MopedPlayer(this, 1, wasdSet)
+          : new LotPlayer(this, 1, [wasdSet])
+      );
+    }
 
-    this.players = bindings.map((keySets, i) => {
-      const player = new LotPlayer(this, i, keySets);
-      this.physics.add.collider(player.sprite, this.obstacles);
-      return player;
-    });
+    this.players.forEach((p) => this.physics.add.collider(p.sprite, this.obstacles));
+    this.driver = this.players.find((p) => p.kind === 'driver') || null;
   }
 
   bindInput() {
@@ -456,8 +466,9 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  activePlayers() {
-    return this.players.filter((p) => p.alive);
+  // Only attendants hold lives and clear the lot; the driver just racks up hits.
+  activeAttendants() {
+    return this.players.filter((p) => p.alive && p.canPushCarts);
   }
 
   tryPickup(p) {
@@ -578,12 +589,12 @@ class GameScene extends Phaser.Scene {
     p.respawn(now, 1600);
     if (p.lives <= 0) p.eliminate();
     this.publish();
-    if (this.activePlayers().length === 0) this.endGame();
+    if (this.activeAttendants().length === 0) this.endGame('wiped');
   }
 
   outOfTime(now) {
     this.timeLeft = CFG.levelSeconds;
-    this.activePlayers().forEach((p) => {
+    this.activeAttendants().forEach((p) => {
       p.lives -= 1;
       this.returnTrainHome(p);
       this.banner(p.x, p.y, 'CLOSING TIME', '#e08b8b');
@@ -592,12 +603,90 @@ class GameScene extends Phaser.Scene {
     });
     this.flash(0xc94f4f);
     this.publish();
-    if (this.activePlayers().length === 0) this.endGame();
+    if (this.activeAttendants().length === 0) this.endGame('wiped');
+  }
+
+  // ---------- the driver (versus mode) ----------
+
+  // The moped is a hazard with a person on it: it flattens attendants for
+  // points, and pays for hitting anything else in the lot.
+  driverHazards(car, now) {
+    if (now < car.stunUntil || now < car.invulnUntil) return;
+
+    if (this.hitByTraffic(car)) {
+      car.score -= CFG.score.crashPenalty;
+      car.spinOut(now, CFG.moped.stunOnCrash);
+      car.invulnUntil = now + CFG.moped.stunOnCrash + CFG.moped.crashImmuneMs;
+      this.flash(0xc94f4f);
+      this.banner(car.x, car.y, `-${CFG.score.crashPenalty} CRASH`, '#e08b8b');
+      this.publish();
+      return;
+    }
+
+    let hitPed = null;
+    this.peds.children.iterate((ped) => {
+      if (!ped || hitPed) return;
+      if (Phaser.Math.Distance.Between(ped.x, ped.y, car.x, car.y) < CFG.moped.hitRadius) {
+        hitPed = ped;
+      }
+    });
+    if (hitPed) {
+      car.score -= CFG.score.pedPenalty;
+      car.spinOut(now, CFG.moped.stunOnPed);
+      car.invulnUntil = now + CFG.moped.stunOnPed + CFG.moped.crashImmuneMs;
+      this.shove(hitPed, car);
+      this.retarget(hitPed);
+      this.banner(car.x, car.y, `-${CFG.score.pedPenalty} SHOPPER`, '#e6c06a');
+      this.publish();
+    }
+  }
+
+  // Clipping carts scatters them: loose ones get shunted, and a cart being
+  // pushed is knocked out of its train.
+  scatterCarts(car) {
+    this.carts.forEach((cart) => {
+      if (cart.state === 'done') return;
+      if (Phaser.Math.Distance.Between(cart.sprite.x, cart.sprite.y, car.x, car.y) > 30) {
+        return;
+      }
+      if (cart.state === 'train' && cart.owner) {
+        cart.owner.train = cart.owner.train.filter((c) => c !== cart);
+        cart.owner = null;
+        cart.state = 'idle';
+        cart.sprite.setDepth(4);
+        this.publish();
+      }
+      this.shove(cart.sprite, car);
+    });
+  }
+
+  shove(target, car) {
+    const angle = Phaser.Math.Angle.Between(car.x, car.y, target.x, target.y);
+    const push = 26;
+    target.x = Phaser.Math.Clamp(target.x + Math.cos(angle) * push, 20, CFG.width - 20);
+    target.y = Phaser.Math.Clamp(
+      target.y + Math.sin(angle) * push,
+      CFG.store.h + 16,
+      CFG.height - 20
+    );
+  }
+
+  rundown(car, p, now) {
+    car.score += CFG.score.takedown;
+    car.takedowns += 1;
+    car.spinOut(now, CFG.moped.stunOnHit);
+    this.banner(car.x, car.y, `+${CFG.score.takedown}`, '#ef8fae');
+    this.runOver(p, now);
   }
 
   // ---------- flow ----------
 
   nextLevel() {
+    if (this.mode === 'versus') {
+      this.endGame('cleared');
+      return;
+    }
+
     this.level += 1;
     this.speedMul = 1 + (this.level - 1) * CFG.levelSpeedStep;
     const bonus = CFG.score.levelClear + Math.round(this.timeLeft) * CFG.score.timeBonus;
@@ -616,14 +705,33 @@ class GameScene extends Phaser.Scene {
     this.publish();
   }
 
-  endGame() {
+  endGame(outcome) {
     this.gameOver = true;
     const cx = CFG.width / 2;
     const cy = CFG.height / 2;
 
-    this.add.rectangle(cx, cy, CFG.width, 170, 0x000000, 0.82).setDepth(20);
+    this.add.rectangle(cx, cy, CFG.width, 180, 0x000000, 0.82).setDepth(20);
+
+    const attendant = this.players[0];
+    let headline = 'SHIFT OVER';
+    let verdict = '';
+
+    if (this.mode === 'versus') {
+      headline = outcome === 'cleared' ? 'LOT CLEARED' : 'ATTENDANT DOWN';
+      verdict =
+        outcome === 'cleared'
+          ? `${attendant.label} wins — every cart returned`
+          : `${this.driver.label} wins — ${this.driver.takedowns} takedown${
+              this.driver.takedowns === 1 ? '' : 's'
+            }`;
+    } else if (this.players.length > 1) {
+      const best = this.players.reduce((a, b) => (b.score > a.score ? b : a));
+      const tie = this.players.every((p) => p.score === best.score);
+      verdict = tie ? 'dead heat' : `${best.label} wins the shift`;
+    }
+
     this.add
-      .text(cx, cy - 40, 'SHIFT OVER', {
+      .text(cx, cy - 44, headline, {
         fontFamily: 'monospace',
         fontSize: '32px',
         color: '#e8eef5',
@@ -636,7 +744,7 @@ class GameScene extends Phaser.Scene {
         ? `score ${this.players[0].score}`
         : this.players.map((p) => `${p.label} ${p.score}`).join('   ·   ');
     this.add
-      .text(cx, cy + 2, scores, {
+      .text(cx, cy - 4, scores, {
         fontFamily: 'monospace',
         fontSize: '17px',
         color: '#cbd6e2',
@@ -644,11 +752,9 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(21);
 
-    if (this.players.length > 1) {
-      const best = this.players.reduce((a, b) => (b.score > a.score ? b : a));
-      const tie = this.players.every((p) => p.score === best.score);
+    if (verdict) {
       this.add
-        .text(cx, cy + 30, tie ? 'dead heat' : `${best.label} wins the shift`, {
+        .text(cx, cy + 26, verdict, {
           fontFamily: 'monospace',
           fontSize: '15px',
           color: '#7fd6a6',
@@ -658,7 +764,7 @@ class GameScene extends Phaser.Scene {
     }
 
     this.add
-      .text(cx, cy + 62, 'R restart  ·  M menu', {
+      .text(cx, cy + 60, 'R restart  ·  M menu', {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: '#8a97a6',
@@ -699,11 +805,14 @@ class GameScene extends Phaser.Scene {
       left: this.cartsTotal - this.cartsDelivered,
       time: Math.max(0, this.timeLeft),
       maxTrain: CFG.cart.maxTrain,
+      mode: this.mode,
       players: this.players.map((p) => ({
         label: p.label,
+        kind: p.kind,
         score: p.score,
-        lives: Math.max(0, p.lives),
+        lives: p.lives === null ? null : Math.max(0, p.lives),
         train: p.train.length,
+        takedowns: p.takedowns || 0,
         alive: p.alive,
       })),
     });
@@ -720,9 +829,9 @@ class GameScene extends Phaser.Scene {
     this.updatePeds(time);
 
     this.players.forEach((p) => {
-      p.handleInput(time);
+      p.handleInput(time, dt);
       p.updateTrain();
-      if (!p.alive) return;
+      if (!p.alive || !p.canPushCarts) return;
 
       this.tryPickup(p);
       this.tryDeliver(p);
@@ -731,14 +840,27 @@ class GameScene extends Phaser.Scene {
       p.marker.setAlpha(blink);
     });
 
+    if (this.driver && this.driver.alive) {
+      this.driverHazards(this.driver, time);
+      this.scatterCarts(this.driver);
+    }
+
     for (const p of this.players) {
-      if (!p.alive || time < p.invulnUntil) continue;
+      if (!p.alive || !p.canPushCarts || time < p.invulnUntil) continue;
+
       if (this.hitByTraffic(p)) {
         this.runOver(p, time);
-        if (this.gameOver) return;
+      } else if (
+        this.driver &&
+        this.driver.alive &&
+        Phaser.Math.Distance.Between(this.driver.x, this.driver.y, p.x, p.y) <
+          CFG.moped.hitRadius
+      ) {
+        this.rundown(this.driver, p, time);
       } else if (this.hitByPed(p)) {
         this.bumpedByPed(p, time);
       }
+      if (this.gameOver) return;
     }
 
     this.timeLeft -= dt;

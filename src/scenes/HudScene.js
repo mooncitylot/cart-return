@@ -17,6 +17,7 @@ class HudScene extends Phaser.Scene {
     this.p2 = this.add
       .text(CFG.width - 12, y, '', { ...mono, color: '#e0a35c' })
       .setOrigin(1, 0.5);
+    this.p2Color = { attendant: '#e0a35c', driver: '#ef8fae' };
 
     this.add
       .rectangle(CFG.width / 2, CFG.height + 2, CFG.width, 4, 0x2a3038)
@@ -39,15 +40,21 @@ class HudScene extends Phaser.Scene {
   }
 
   playerLine(p, maxTrain) {
-    if (!p.alive) return `${p.label} ${String(p.score).padStart(6, '0')}   OUT`;
-    return `${p.label} ${String(p.score).padStart(6, '0')}   ${'♥'.repeat(p.lives)}   PUSHING ${p.train}/${maxTrain}`;
+    const score = `${p.label} ${String(Math.max(0, p.score)).padStart(6, '0')}`;
+    if (p.kind === 'driver') {
+      return `${score}   TAKEDOWNS ${p.takedowns}`;
+    }
+    if (!p.alive) return `${score}   OUT`;
+    return `${score}   ${'♥'.repeat(p.lives)}   PUSHING ${p.train}/${maxTrain}`;
   }
 
   render(d) {
     if (!d || !this.scene.isActive()) return;
 
     this.p1.setText(this.playerLine(d.players[0], d.maxTrain));
-    this.p2.setText(d.players[1] ? this.playerLine(d.players[1], d.maxTrain) : '');
+    const second = d.players[1];
+    this.p2.setText(second ? this.playerLine(second, d.maxTrain) : '');
+    if (second) this.p2.setColor(this.p2Color[second.kind]);
     this.middle.setText(`LOT ${d.level}   CARTS LEFT ${d.left}   ${Math.ceil(d.time)}s`);
 
     const frac = Phaser.Math.Clamp(d.time / CFG.levelSeconds, 0, 1);

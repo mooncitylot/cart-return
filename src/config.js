@@ -4,53 +4,64 @@
 //   88-108  sidewalk (safe, holds the delivery zone)
 //   then alternating driving aisles and parking bands, ending in a perimeter lane.
 const CFG = {
-  width: 1040,
-  height: 700,
+  width: 1200,
+  height: 820,
   hudHeight: 42,
 
-  store: { x: 0, y: 0, w: 1040, h: 88 },
-  sidewalk: { y: 88, h: 20 },
-  dropZone: { x: 300, y: 98, w: 216, h: 26 }, // centre x/y — push carts here
+  store: { x: 0, y: 0, w: 1200, h: 88 },
+  sidewalk: { y: 88, h: 24 },
+  dropZone: { x: 340, y: 100, w: 240, h: 28 }, // centre x/y — push carts here
 
   // Driving aisles. `pos` is the centre line of the lane.
   // axis 'x' = horizontal lane (dir 1 drives right), axis 'y' = vertical lane
   // (dir 1 drives down). Lanes are 56px wide.
-  laneWidth: 56,
+  laneWidth: 100,
   // Crossing signals, in seconds. Demand-actuated: the aisles hold green until
   // a car on the main drive lane actually approaches. allRed lets the box clear.
-  lights: { minXGreen: 4, yGreen: 5, minYGreen: 2, allRed: 1, demandRange: 320 },
+  lights: { minXGreen: 4, yGreen: 5, minYGreen: 2, allRed: 1, demandRange: 420 },
   // `gap` is the spacing between cars in a lane: big gaps keep the lot sparse
   // and readable, so crossings are a timing problem, not a wall of metal.
   aisles: [
-    { axis: 'x', pos: 136, dir: 1, speed: 115, gap: 820 },
-    { axis: 'x', pos: 344, dir: -1, speed: 150, gap: 900 },
-    { axis: 'x', pos: 552, dir: 1, speed: 130, gap: 860 },
-    { axis: 'x', pos: 678, dir: -1, speed: 170, gap: 940 },
+    { axis: 'x', pos: 162, dir: 1, speed: 115, gap: 940 },
+    { axis: 'x', pos: 438, dir: -1, speed: 150, gap: 1020 },
+    { axis: 'x', pos: 714, dir: 1, speed: 130, gap: 980 },
     // main drive lane running straight down the lot
-    { axis: 'y', pos: 660, dir: 1, speed: 135, gap: 700 },
+    { axis: 'y', pos: 760, dir: 1, speed: 135, gap: 820 },
   ],
 
   // Stall rows: y is the top edge, each row is stallH tall.
-  stallRows: [{ y: 164 }, { y: 240 }, { y: 372 }, { y: 448 }, { y: 580 }],
-  stallW: 60,
-  stallH: 76,
-  stallMargin: 40,
-  parkedFill: 0.62, // fraction of stalls that hold a parked car
+  stallRows: [{ y: 212 }, { y: 300 }, { y: 488 }, { y: 576 }],
+  stallW: 76,
+  stallH: 88,
+  stallMargin: 48,
+  parkedFill: 0.6, // fraction of stalls that hold a parked car
 
   // Cart corrals, dropped into stall rows. x,y = centre.
   corrals: [
-    { x: 210, y: 202, carts: 3 },
-    { x: 870, y: 278, carts: 3 },
-    { x: 390, y: 486, carts: 3 },
-    { x: 240, y: 618, carts: 3 },
+    { x: 268, y: 256, carts: 3 },
+    { x: 1002, y: 344, carts: 3 },
+    { x: 496, y: 532, carts: 3 },
+    { x: 306, y: 620, carts: 3 },
   ],
 
   player: {
-    spawn: { x: 300, y: 100 },
+    spawn: { x: 340, y: 100 },
     speed: 195,
     speedPerCart: 15, // each cart in the train costs this much top speed
     minSpeed: 110,
     stunMs: 750,
+  },
+
+  // Versus mode: the rider's moped. Eight-way controls and the same top speed as
+  // an attendant on foot; it just never has a cart train slowing it down.
+  moped: {
+    spawn: { x: 1080, y: 620 }, // kept clear of parked cars and traffic lanes
+    hitRadius: 22, // how close the moped has to be to flatten someone
+    stunOnPed: 500,
+    stunOnCrash: 900,
+    stunOnHit: 350,
+    spinSpeed: 7, // rad/sec the spill slews through while stunned
+    crashImmuneMs: 1200, // no repeat penalty while untangling from a wreck
   },
 
   cart: {
@@ -74,6 +85,10 @@ const CFG = {
     chainBonus: 40, // extra, per cart beyond the first, in a single delivery
     levelClear: 600,
     timeBonus: 4, // per second left when the lot is cleared
+    // versus mode, for the driver
+    takedown: 400,
+    pedPenalty: 150,
+    crashPenalty: 100,
   },
 
   colors: {

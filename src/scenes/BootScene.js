@@ -24,6 +24,7 @@ class BootScene extends Phaser.Scene {
     });
 
     this.makeCart();
+    this.makeMoped();
 
     // Parked cars point up (nose-in stalls); traffic points right.
     BootScene.PARKED_KEYS = [0xb44a4a, 0x4a72b4, 0xb49a4a, 0x5aa07a, 0x8a8f96, 0xa86bc4].map(
@@ -97,6 +98,47 @@ class BootScene extends Phaser.Scene {
     g.lineBetween(1, 4, 1, h - 4);
 
     g.generateTexture('cart', w, h);
+    g.destroy();
+  }
+
+  // The versus-mode moped, seen from above with its rider: small enough to
+  // thread the aisles, loud enough not to be mistaken for traffic.
+  makeMoped() {
+    const w = 46;
+    const h = 26;
+    const mid = h / 2;
+    const g = this.gfx();
+
+    // wheels, front and back along the centre line
+    g.fillStyle(0x2a2f36, 1);
+    g.fillRoundedRect(0, mid - 4, 12, 8, 3);
+    g.fillRoundedRect(w - 12, mid - 4, 12, 8, 3);
+    g.fillStyle(0x8d97a3, 1);
+    g.fillRect(4, mid - 1, 4, 2);
+    g.fillRect(w - 8, mid - 1, 4, 2);
+
+    // deck: bright, and long enough to show past the rider at both ends
+    g.fillStyle(0xd4356b, 1);
+    g.fillRoundedRect(5, mid - 7, w - 10, 14, 6);
+    g.fillStyle(0x8f1f45, 1); // seat
+    g.fillRoundedRect(9, mid - 5, 13, 10, 4);
+
+    // handlebars across the nose
+    g.fillStyle(0xb9c2cd, 1);
+    g.fillRect(w - 17, 2, 4, h - 4);
+
+    // rider: pale jacket so the silhouette pops against the asphalt
+    g.fillStyle(0xe7edf4, 1);
+    g.fillRoundedRect(15, 5, 16, h - 10, 6);
+    g.fillStyle(0xc2ccd8, 1); // arms out to the bars
+    g.fillRect(28, 4, 8, 4);
+    g.fillRect(28, h - 8, 8, 4);
+    g.fillStyle(0xe8b13c, 1); // helmet
+    g.fillCircle(30, mid, 6.5);
+    g.fillStyle(0x1b2027, 1); // visor, pointing the way it travels
+    g.fillRect(32, mid - 4, 4, 8);
+
+    g.generateTexture('moped', w, h);
     g.destroy();
   }
 
