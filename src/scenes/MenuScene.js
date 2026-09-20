@@ -5,10 +5,10 @@ class MenuScene extends Phaser.Scene {
   }
 
   create() {
-    const cx = CFG.width / 2;
-    const cy = (CFG.height + CFG.hudHeight) / 2;
+    const cx = CFG.view.w / 2;
+    const cy = (CFG.view.h + CFG.hudHeight) / 2;
 
-    this.add.rectangle(cx, cy, CFG.width, CFG.height + CFG.hudHeight, 0x161a20);
+    this.add.rectangle(cx, cy, CFG.view.w, CFG.view.h + CFG.hudHeight, 0x161a20);
     this.add
       .text(cx, cy - 150, 'CART RETURN', {
         fontFamily: 'monospace',

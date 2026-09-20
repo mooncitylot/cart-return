@@ -1,8 +1,8 @@
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  width: CFG.width,
-  height: CFG.height + CFG.hudHeight,
+  width: CFG.view.w,
+  height: CFG.view.h + CFG.hudHeight,
   backgroundColor: '#0e1116',
   physics: {
     default: 'arcade',

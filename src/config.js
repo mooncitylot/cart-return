@@ -1,62 +1,126 @@
 // Every tunable for the lot lives here. Pixel coordinates, origin top-left.
-// Vertical layout, top to bottom:
-//   0-88    store building (solid)
-//   88-108  sidewalk (safe, holds the delivery zone)
-//   then alternating driving aisles and parking bands, ending in a perimeter lane.
+//
+// The lot is modelled on a big-box warehouse store seen from the air: one huge
+// windowless box across the north edge, a receiving yard of trailer docks off
+// its west end, a tyre-centre annex off its east end, and a deep field of
+// parking in front split down the middle by the entrance drive.
+//
+// Two coordinate scales matter here:
+//   view   — the camera viewport, i.e. how much of the lot you see at once
+//   width/height — the WORLD, the whole lot, several screens across
+// Everything else in the codebase works in world pixels.
+//
+// North-to-south layout:
+//   0-1080     store box, receiving yard, annex, landscaping (out of bounds)
+//   1080-1195  storefront sidewalk (safe, holds the cart return)
+//   1195-2577  the parking field: alternating drive aisles and stall bands
 const CFG = {
-  width: 1200,
-  height: 820,
+  // ---- camera ----
+  view: { w: 1360, h: 800 },
   hudHeight: 42,
+  camera: {
+    lerp: 0.12,
+    splitZoom: 0.82, // two-player halves are narrow, so pull back a little
+    mapW: 300,
+    mapH: 232,
+  },
 
-  store: { x: 0, y: 0, w: 1200, h: 88 },
-  sidewalk: { y: 88, h: 24 },
-  dropZone: { x: 340, y: 100, w: 240, h: 28 }, // centre x/y — push carts here
+  // ---- world ----
+  width: 3400,
+  height: 2660,
+
+  // Paved extent, and the rectangle everything loose is clamped inside.
+  pavement: { x: 110, y: 1080, w: 3180, h: 1512 },
+  lot: { x1: 125, y1: 1080, x2: 3275, y2: 2577 },
+
+  store: { x: 820, y: 150, w: 2160, h: 930 },
+  canopy: { x: 880, y: 1000, w: 640, h: 142 }, // red entry canopy, west end of the front
+  dock: { x: 150, y: 430, w: 640, h: 650 }, // trailer yard behind the west wall
+  annex: { x: 3020, y: 600, w: 290, h: 480 }, // tyre centre off the east end
+
+  sidewalk: { y: 1080, h: 115 },
+  doors: [
+    { x: 1700, w: 180 }, // entry
+    { x: 2010, w: 180 }, // exit
+  ],
+  dropZone: { x: 1855, y: 1137, w: 300, h: 62 }, // centre x/y — push carts here
+
+  // ---- parking ----
+  // Two stall fields either side of the entrance drive. Stalls are laid out in
+  // whole slots across each field, so nothing straddles a lane.
+  fields: [
+    { x1: 235, x2: 1600 },
+    { x1: 1840, x2: 3165 },
+  ],
+
+  // Pedestrian network. Shoppers stay on this for most of their walking, and
+  // only step off it to reach a car or a stray cart out in the rows.
+  //
+  // It is a tree: the storefront sidewalk is the trunk, and the two spines
+  // flanking the entrance drive hang off it. `link` is where a spine meets the
+  // trunk, which is all the routing needs to get between any two of them.
+  walks: [
+    { x: 110, y: 1080, w: 3180, h: 115 }, // storefront sidewalk
+    { x: 1600, y: 1195, w: 65, h: 1382, link: { x: 1632, y: 1158 } },
+    { x: 1775, y: 1195, w: 65, h: 1382, link: { x: 1807, y: 1158 } },
+  ],
+  // Stall rows: y is the top edge. Rows come in back-to-back pairs, each pair
+  // sitting between two drive aisles.
+  stallRows: [
+    { y: 1305 }, { y: 1409 },
+    { y: 1623 }, { y: 1727 },
+    { y: 1941 }, { y: 2045 },
+    { y: 2259 }, { y: 2363 },
+  ],
+  stallW: 72,
+  stallH: 104,
+  parkedFill: 0.68, // fraction of stalls that hold a parked car
 
   // Driving aisles. `pos` is the centre line of the lane.
   // axis 'x' = horizontal lane (dir 1 drives right), axis 'y' = vertical lane
-  // (dir 1 drives down). Lanes are 56px wide.
-  laneWidth: 100,
+  // (dir 1 drives down). `from`/`to` bound a lane that does not span the world.
+  laneWidth: 110,
   // Crossing signals, in seconds. Demand-actuated: the aisles hold green until
-  // a car on the main drive lane actually approaches. allRed lets the box clear.
-  lights: { minXGreen: 4, yGreen: 5, minYGreen: 2, allRed: 1, demandRange: 420 },
+  // a car on a main drive lane actually approaches. allRed lets the box clear.
+  lights: { minXGreen: 4, yGreen: 5, minYGreen: 2, allRed: 1, demandRange: 460 },
   // `gap` is the spacing between cars in a lane: big gaps keep the lot sparse
   // and readable, so crossings are a timing problem, not a wall of metal.
   aisles: [
-    { axis: 'x', pos: 162, dir: 1, speed: 115, gap: 940 },
-    { axis: 'x', pos: 438, dir: -1, speed: 150, gap: 1020 },
-    { axis: 'x', pos: 714, dir: 1, speed: 130, gap: 980 },
-    // main drive lane running straight down the lot
-    { axis: 'y', pos: 760, dir: 1, speed: 135, gap: 820 },
+    { axis: 'x', pos: 1250, dir: -1, speed: 120, gap: 700 }, // front fire lane
+    { axis: 'x', pos: 1568, dir: 1, speed: 135, gap: 640 },
+    { axis: 'x', pos: 1886, dir: -1, speed: 130, gap: 660 },
+    { axis: 'x', pos: 2204, dir: 1, speed: 140, gap: 620 },
+    { axis: 'x', pos: 2522, dir: -1, speed: 150, gap: 720 }, // south perimeter
+    // main drives running the depth of the lot
+    { axis: 'y', pos: 180, dir: -1, speed: 140, gap: 640, from: 1195, to: 2660 },
+    { axis: 'y', pos: 1720, dir: 1, speed: 130, gap: 600, from: 1195, to: 2660 },
+    { axis: 'y', pos: 3220, dir: 1, speed: 145, gap: 660, from: 1195, to: 2660 },
   ],
 
-  // Stall rows: y is the top edge, each row is stallH tall.
-  stallRows: [{ y: 212 }, { y: 300 }, { y: 488 }, { y: 576 }],
-  stallW: 76,
-  stallH: 88,
-  stallMargin: 48,
-  parkedFill: 0.6, // fraction of stalls that hold a parked car
-
-  // Cart corrals, dropped into stall rows. x,y = centre.
+  // Cart corrals, dropped into stall rows. x,y = centre of a three-stall bay.
   corrals: [
-    { x: 268, y: 256, carts: 3 },
-    { x: 1002, y: 344, carts: 3 },
-    { x: 496, y: 532, carts: 3 },
-    { x: 306, y: 620, carts: 3 },
+    { x: 595, y: 1461, carts: 3 },
+    { x: 2095, y: 1357, carts: 3 },
+    { x: 1315, y: 1779, carts: 3 },
+    { x: 2815, y: 1675, carts: 3 },
+    { x: 955, y: 2311, carts: 3 },
+    { x: 2455, y: 2415, carts: 3 },
   ],
 
   player: {
-    spawn: { x: 340, y: 100 },
-    speed: 195,
-    speedPerCart: 15, // each cart in the train costs this much top speed
-    minSpeed: 110,
+    spawn: { x: 1855, y: 1137 },
+    speed: 235, // the lot is big; a slow walk across it is just dead time
+    speedPerCart: 13, // each cart in the train costs this much top speed
+    minSpeed: 150,
     stunMs: 750,
   },
 
   // Versus mode: the rider's moped. Eight-way controls and the same top speed as
   // an attendant on foot; it just never has a cart train slowing it down.
   moped: {
-    spawn: { x: 1080, y: 620 }, // kept clear of parked cars and traffic lanes
+    spawn: { x: 2995, y: 2311 }, // a far corner stall, clear of traffic
     hitRadius: 22, // how close the moped has to be to flatten someone
+    spawnGuard: 110, // attendants can't be taken down until they leave respawn
     stunOnPed: 500,
     stunOnCrash: 900,
     stunOnHit: 350,
@@ -65,19 +129,28 @@ const CFG = {
   },
 
   cart: {
-    maxTrain: 5,
+    maxTrain: 8, // longer trains, because the haul back to the store is long
     spacing: 24, // px between carts in the pushed train
     followLerp: 0.35, // how sharply the train swings around when you turn
   },
 
   peds: {
-    count: 8,
-    speed: 48,
-    pauseChance: 0.004, // per-frame chance a pedestrian stops to browse
+    count: 34,
+    speed: 52,
+    pauseChance: 0.003, // per-frame chance a pedestrian stops to browse
+    reach: 16, // how close counts as having arrived at a waypoint
+    // What a shopper does next, rolled each time they finish a trip. Whatever
+    // is left over is a stroll along the walkways.
+    tidyChance: 0.28, // go and put a stray cart back in a corral
+    errandChance: 0.22, // walk out to a car somewhere in the rows
+    strayRange: 1100, // furthest a shopper will go out of their way for a cart
+    cartOffset: 22, // how far in front of them the cart is pushed
+    stuckLimit: 3, // failed shoves before they give up on the errand
+    stuckCooldown: 20, // frames before a continuing shove counts as a new one
   },
 
   lives: 3,
-  levelSeconds: 100,
+  levelSeconds: 190,
   levelSpeedStep: 0.12, // traffic + pedestrian speed multiplier added per lot
 
   score: {
@@ -92,15 +165,29 @@ const CFG = {
   },
 
   colors: {
+    grass: 0x2b3a2e,
     asphalt: 0x23272d,
     aisle: 0x1d2126,
     sidewalk: 0x3d444c,
     stallPaint: 0x505963,
+    accessible: 0x3c6ea8,
     store: 0x323a44,
+    storeRoof: 0x39424e,
     storeTrim: 0x4c5765,
+    hvac: 0x2a313a,
+    skylight: 0x46525f,
     doors: 0x2c4f3d,
+    canopy: 0x9d3a33,
+    canopyPost: 0x6e2a25,
+    dockPad: 0x2a2f36,
+    trailer: 0xc3c8cf,
     dropZone: 0x3f8f5e,
     corralRail: 0x6fa8d4,
     curb: 0x39424c,
+    island: 0x36433a,
+    shrub: 0x4d7a52,
+    tree: 0x3f6b46,
+    signBlue: 0x2c5f9e,
+    signRed: 0xa8413a,
   },
 };

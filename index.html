@@ -20,13 +20,23 @@
       document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"><\/script>');
     }
   </script>
-  <script src="src/config.js"></script>
-  <script src="src/player.js"></script>
-  <script src="src/moped.js"></script>
-  <script src="src/scenes/BootScene.js"></script>
-  <script src="src/scenes/MenuScene.js"></script>
-  <script src="src/scenes/GameScene.js"></script>
-  <script src="src/scenes/HudScene.js"></script>
-  <script src="src/main.js"></script>
+  <!-- Game sources, written out in order so execution order is preserved.
+       Each gets a cache-busting query: these are plain classic scripts, and
+       browsers hold on to them hard enough that an edited file keeps loading
+       the previous build until you hard-reload. -->
+  <script>
+    [
+      'src/config.js',
+      'src/player.js',
+      'src/moped.js',
+      'src/scenes/BootScene.js',
+      'src/scenes/MenuScene.js',
+      'src/scenes/GameScene.js',
+      'src/scenes/HudScene.js',
+      'src/main.js',
+    ].forEach(function (src) {
+      document.write('<script src="' + src + '?t=' + Date.now() + '"><\/script>');
+    });
+  </script>
 </body>
 </html>

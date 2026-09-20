@@ -143,21 +143,21 @@ class BootScene extends Phaser.Scene {
   }
 
   makeParkedCar(key, color) {
-    const w = 36;
-    const h = 62;
+    const w = 48;
+    const h = 86;
     const g = this.gfx();
 
     g.fillStyle(color, 1);
     g.fillRoundedRect(1, 0, w - 2, h, 7);
     g.fillStyle(0x121820, 0.5); // windshield + rear glass
-    g.fillRoundedRect(6, 8, w - 12, 14, 3);
-    g.fillRoundedRect(6, h - 24, w - 12, 15, 3);
+    g.fillRoundedRect(7, 11, w - 14, 19, 3);
+    g.fillRoundedRect(7, h - 33, w - 14, 21, 3);
     g.fillStyle(0x000000, 0.18); // roof
-    g.fillRect(6, 26, w - 12, h - 52);
+    g.fillRect(7, 35, w - 14, h - 71);
     g.fillStyle(0x15181c, 1); // tyres
-    [10, h - 22].forEach((y) => {
-      g.fillRect(-1, y, 4, 12);
-      g.fillRect(w - 3, y, 4, 12);
+    [14, h - 30].forEach((y) => {
+      g.fillRect(-1, y, 5, 16);
+      g.fillRect(w - 4, y, 5, 16);
     });
 
     g.generateTexture(key, w, h);

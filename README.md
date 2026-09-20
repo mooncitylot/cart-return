@@ -27,7 +27,11 @@ The title screen picks the mode:
 | 3 | Versus | One attendant on foot vs. one player on a moped |
 
 Everyone wears a coloured ring so you can pick yourself out of the crowd of
-shoppers.
+shoppers. The lot is far bigger than the window, so the camera follows you and a
+minimap in the corner shows the whole site: the cart return in green, loose carts
+in white, players as coloured dots, and a box around what each player can see. In
+two-player the screen splits down the middle, one half each, with the minimap on
+the seam.
 
 | Key    | Action                                   |
 | ------ | ---------------------------------------- |
@@ -58,36 +62,66 @@ whenever it hits something.
 - The lot is not the rider's playground alone: hitting a shopper costs **-150**
   and hitting AI traffic costs **-100**, both with a spin-out.
 - The rider cannot be knocked out — only scored against.
-- **Attendant wins** by returning all 12 carts. **Rider wins** by taking the
+- **Attendant wins** by returning all 18 carts. **Rider wins** by taking the
   attendant's last life (or letting the clock run them out of lives).
 
 ## Rules
 
-- 12 carts sit in four corrals. Return them all to clear the lot; each new lot
-  runs 12% faster. In two-player, carts returned by either attendant count.
-- You can push up to 5 carts at once. The train trails behind you along the path
-  you actually walked, and every extra cart costs you top speed.
+- 18 carts sit in six corrals spread across the lot. Return them all to clear it;
+  each new lot runs 12% faster. In two-player, carts returned by either attendant
+  count.
+- You can push up to 8 carts at once. The train trails behind you along the path
+  you actually walked, and every extra cart costs you top speed. The haul back to
+  the store is long, so it is nearly always worth filling the train first.
 - Traffic kills: you lose a life, and the carts you were pushing go back to their
   corral. Three lives.
 - Pedestrians don't kill you, but a collision stuns you and scatters your train
   across the asphalt, where you have to collect it again.
-- 100 seconds per lot. Running out costs every player still on the clock a life.
+- **Shoppers tidy up after you.** A cart left loose anywhere that isn't a corral
+  is fair game: a passing shopper will walk over, take it, and push it back to
+  the nearest corral, which becomes that cart's new home. So a train you drop
+  halfway to the store does not just sit there waiting — the lot slowly undoes
+  your work. They only take carts that are already loose; carts sitting in a
+  corral are left alone, and no two shoppers go for the same one.
+- 190 seconds per lot. Running out costs every player still on the clock a life.
 - Score: 120 per cart, +40 for each cart beyond the first in one delivery, 600 per
   lot cleared plus 4 per second remaining.
 
 ## The lot
 
-Storefront and sidewalk run along the top, with the cart return in front of the
-doors. Below that: three wide horizontal driving aisles separated by bands of
-stalls, one main drive lane running straight down the lot, and an open apron
-along the bottom. Lanes are 100px wide and the stall rows are spaced out, so
-there is room to drive as well as walk. Parked cars are solid — you walk around
-them, and they double as cover from traffic.
+Modelled on a big-box warehouse store from the air. The world is 3400 x 2660px,
+several screens across.
 
-Where the drive lane meets an aisle there is a signalled crossing (the small
-red/green dots). The signals are demand-actuated: aisles hold green until a car
-on the drive lane actually approaches. Cars stop for red, never drive through
-each other, and a car already inside a crossing always clears it.
+Along the north edge: the store itself, one long windowless box with roof
+skylights and HVAC packs, a red entry canopy over the west end of the storefront,
+a receiving yard of trailer docks behind the west wall, and a tyre-centre annex
+off the east end. All of that is outside the physics world — the walkable lot is
+the pavement in front of it. The storefront sidewalk runs the full paved width
+and holds the cart return, in front of the doors.
+
+Two pedestrian walkway spines run the depth of the lot, one either side of the
+entrance drive, striped with a crosswalk everywhere they meet a driving aisle.
+Together with the storefront sidewalk they make up the walkway network, and
+shoppers stay on it for roughly four-fifths of their walking — they only step off
+to reach a car out in the rows or a cart somebody left loose.
+
+South of the sidewalk is the parking field: five horizontal driving aisles
+alternating with bands of stalls, and three drive lanes running the full depth of
+the lot — one down each perimeter and one straight out from the entrance. Stalls
+are laid out in whole slots within two fields, one either side of the entrance
+drive, so nothing straddles a lane. Every back-to-back row pair is capped at both
+ends by a landscaped planter, which is solid. Stalls within a bay of the doors are
+painted blue and left empty for shoppers.
+
+Lanes are 110px wide and stalls are 72 x 104. Parked cars are solid: you walk
+around them, squeeze between them, and they double as cover from traffic. Corrals
+sit in three-stall bays out in the rows, so every run is a trip across live
+traffic.
+
+Where a drive lane meets an aisle there is a signalled crossing (the small
+red/green dots) — fifteen of them. The signals are demand-actuated: aisles hold
+green until a car on the drive lane actually approaches. Cars stop for red, never
+drive through each other, and a car already inside a crossing always clears it.
 
 ## Layout
 
@@ -101,8 +135,8 @@ src/main.js         Phaser.Game boot (arcade physics)
 src/scenes/
   BootScene.js      generates every texture procedurally (placeholder art lives here)
   MenuScene.js      title + solo / co-op / versus select
-  GameScene.js      lot rendering, traffic + signals, pedestrians, players, carts, scoring
-  HudScene.js       per-player score / lives / train, cart counter, timer band
+  GameScene.js      lot rendering, cameras + minimap, traffic + signals, peds, carts, scoring
+  HudScene.js       per-player score / lives / train, cart counter, timer band, end card
 vendor/phaser.min.js
 assets/             drop real sprites here when they exist
 ```
@@ -125,12 +159,33 @@ from, so adding or removing art means editing those arrays and nothing else.
 
 ## Tuning
 
-`src/config.js` holds everything: aisle positions/speeds and `gap` (bigger gap =
-sparser traffic), `stallRows` and `parkedFill`, corral positions and cart counts,
-`lights` timings, `peds.count`, player speed and the per-cart speed penalty,
-`levelSeconds`, `lives`, `levelSpeedStep`, the `moped` block (hit radius, stun
-lengths, spawn) and the score table. `width`/`height`, `laneWidth`, `stallW`/`stallH` and
-`stallMargin` set the scale of the lot — widen the lanes here if it ever feels
-tight again. The mode is chosen at the title screen and
-read from the registry (`mode`: `solo` / `coop` / `versus`), so adding another
-player means one more entry in `GameScene.createPlayers()`.
+`src/config.js` holds everything: aisle positions/speeds/extents and `gap` (bigger
+gap = sparser traffic), `fields` and `stallRows` and `parkedFill`, corral positions
+and cart counts, `lights` timings, `peds.count`, player speed and the per-cart
+speed penalty, `levelSeconds`, `lives`, `levelSpeedStep`, the `moped` block (hit
+radius, stun lengths, spawn) and the score table.
+
+Two scales live in there and it matters which one you are editing:
+
+- `view` is the camera viewport — how much of the lot fits on screen at once, and
+  what the HUD and title screen lay themselves out against.
+- `width`/`height` are the **world**: the whole lot. Everything else in the
+  codebase works in world pixels. `pavement` and `lot` bound the paved area and
+  the rectangle loose things are clamped inside; `laneWidth`, `stallW`/`stallH`
+  and `fields` set the grain of the parking.
+
+`walks` is the pedestrian network: the storefront sidewalk plus the two spines,
+each spine carrying a `link` point where it joins the sidewalk. That trunk-and-
+spines shape is what lets shoppers route between any two points with no real
+pathfinding, so adding a walkway means adding a rect and its `link`.
+
+The `peds` block sets the mix of what a shopper does next — `tidyChance` (go and
+rack a stray cart), `errandChance` (walk out to a car), and whatever is left over
+as a stroll along the walkways — plus `strayRange`, how far they will go out of
+their way for a cart, and `stuckLimit`/`stuckCooldown`, how many shoves off a
+parked car it takes before they abandon the trip.
+
+`camera` tunes the follow lerp, the zoom used for split-screen halves, and the
+minimap size. The mode is chosen at the title screen and read from the registry
+(`mode`: `solo` / `coop` / `versus`), so adding another player means one more
+entry in `GameScene.createPlayers()`.

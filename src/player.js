@@ -40,6 +40,9 @@ class LotPlayer {
     this.alive = true;
     this.stunUntil = 0;
     this.invulnUntil = 0;
+    // Held until the attendant walks clear of their respawn point, so the
+    // rider can't camp the return zone and farm the same player.
+    this.spawnSafe = true;
   }
 
   get x() {
@@ -95,8 +98,8 @@ class LotPlayer {
   cartTarget(index) {
     const dist = (index + 1) * CFG.cart.spacing + 12;
     return {
-      x: Phaser.Math.Clamp(this.x - this.facing.x * dist, 8, CFG.width - 8),
-      y: Phaser.Math.Clamp(this.y - this.facing.y * dist, 8, CFG.height - 8),
+      x: Phaser.Math.Clamp(this.x - this.facing.x * dist, CFG.lot.x1 + 8, CFG.lot.x2 - 8),
+      y: Phaser.Math.Clamp(this.y - this.facing.y * dist, CFG.sidewalk.y + 8, CFG.lot.y2 - 8),
     };
   }
 
@@ -131,6 +134,7 @@ class LotPlayer {
   }
 
   respawn(now, invulnMs) {
+    this.spawnSafe = true;
     this.sprite.setPosition(this.spawn.x, this.spawn.y);
     this.marker.setPosition(this.spawn.x, this.spawn.y);
     this.sprite.body.setVelocity(0, 0);
