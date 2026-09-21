@@ -141,6 +141,7 @@ class GameScene extends Phaser.Scene {
     this.drawJunction(g);
     this.drawStore(g);
     this.drawDropZone();
+    this.drawCanopyRoof(); // overhead layer, so it has to come after the rest
   }
 
   drawStalls(g) {
@@ -309,20 +310,48 @@ class GameScene extends Phaser.Scene {
       .setDepth(1);
   }
 
-  // Red entry canopy over the west end of the storefront.
+  // Red entry canopy over the west end of the storefront. It is a roof that
+  // juts out over the sidewalk, so it is drawn in two pieces: everything at
+  // ground level here, and the overhanging lip on its own layer above the
+  // people — see drawCanopyRoof(). Otherwise shoppers walk over the roof.
   drawCanopy(g) {
     const c = CFG.colors;
     const k = CFG.canopy;
-    g.fillStyle(0x000000, 0.28);
+    g.fillStyle(0x000000, 0.28); // shadow it throws onto the pavement
     g.fillRect(k.x + 10, k.y + 12, k.w, k.h);
+
+    // The part sitting against the storefront, north of the walkway: nobody
+    // can stand there, so it stays solid and stays down here.
+    const h = CFG.sidewalk.y - k.y;
     g.fillStyle(c.canopy, 1);
-    g.fillRect(k.x, k.y, k.w, k.h);
+    g.fillRect(k.x, k.y, k.w, h);
     g.fillStyle(0xffffff, 0.06);
-    for (let x = k.x; x < k.x + k.w; x += 24) g.fillRect(x, k.y, 10, k.h);
+    for (let x = k.x; x < k.x + k.w; x += 24) g.fillRect(x, k.y, 10, h);
+
+    // Posts stand on the sidewalk at the outer edge, so they belong at ground
+    // level too — you walk around them, under the roof they hold up.
     g.fillStyle(c.canopyPost, 1);
     for (let x = k.x + 40; x < k.x + k.w - 20; x += 120) {
       g.fillRect(x, k.y + k.h - 10, 18, 18);
     }
+  }
+
+  // The overhanging lip of the canopy, on a layer above everyone in the lot:
+  // walking under it should put you in its shade, not on top of it. Kept
+  // translucent so an attendant in there is still easy to follow.
+  drawCanopyRoof() {
+    const c = CFG.colors;
+    const k = CFG.canopy;
+    const y = CFG.sidewalk.y;
+    const h = k.y + k.h - y;
+
+    const g = this.add.graphics().setDepth(14).setAlpha(0.55);
+    g.fillStyle(c.canopy, 1);
+    g.fillRect(k.x, y, k.w, h);
+    g.fillStyle(0xffffff, 0.06);
+    for (let x = k.x; x < k.x + k.w; x += 24) g.fillRect(x, y, 10, h);
+    g.fillStyle(c.canopyPost, 1); // leading edge, so it reads as a roof edge
+    g.fillRect(k.x, y + h - 5, k.w, 5);
   }
 
   // Receiving yard: dock doors along the west wall with trailers backed in.
