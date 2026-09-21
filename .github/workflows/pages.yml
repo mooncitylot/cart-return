@@ -1,0 +1,41 @@
+# Publishes the game to GitHub Pages. The site is the repository as it stands:
+# index.html at the root, plain classic scripts, vendored Phaser, and every
+# path in it relative, so it serves correctly from the /cart-return/ subpath a
+# project page gets.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # to publish a branch by hand, before it is merged
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; let a run in progress finish rather than cancelling it
+# halfway through swapping the live site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      # enablement turns Pages on for the repository the first time this runs,
+      # so there is no settings toggle to remember.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      # .git and .github are left out of the upload by the action itself.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
