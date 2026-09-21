@@ -1249,16 +1249,24 @@ class GameScene extends Phaser.Scene {
     };
     const wasdSet = { up: wasd.W, down: wasd.S, left: wasd.A, right: wasd.D };
 
+    // Touch devices get a stick per player: bottom left is always player one,
+    // bottom right the second player, which lines up with the split screen.
+    TouchControls.setLayout(
+      this.playerCount,
+      this.mode === 'versus' ? ['ATTENDANT', 'RIDER'] : ['P1', 'P2']
+    );
+    const stick = (i) => [TouchControls.stick(i)];
+
     this.players = [];
     if (this.mode === 'solo') {
       // Solo answers to both key sets.
-      this.players.push(new LotPlayer(this, 0, [arrowSet, wasdSet]));
+      this.players.push(new LotPlayer(this, 0, [arrowSet, wasdSet], { sticks: stick(0) }));
     } else {
-      this.players.push(new LotPlayer(this, 0, [arrowSet]));
+      this.players.push(new LotPlayer(this, 0, [arrowSet], { sticks: stick(0) }));
       this.players.push(
         this.mode === 'versus'
-          ? new MopedPlayer(this, 1, wasdSet)
-          : new LotPlayer(this, 1, [wasdSet])
+          ? new MopedPlayer(this, 1, wasdSet, stick(1))
+          : new LotPlayer(this, 1, [wasdSet], { sticks: stick(1) })
       );
     }
 
@@ -1267,11 +1275,17 @@ class GameScene extends Phaser.Scene {
   }
 
   bindInput() {
-    this.input.keyboard.on('keydown-R', () => this.scene.restart());
-    this.input.keyboard.on('keydown-M', () => {
+    const restart = () => this.scene.restart();
+    const menu = () => {
       this.scene.stop('Hud');
       this.scene.start('Menu');
-    });
+    };
+    this.input.keyboard.on('keydown-R', restart);
+    this.input.keyboard.on('keydown-M', menu);
+    // Same two on-screen, for the devices the sticks are there for.
+    TouchControls.setActions({ restart, menu });
+    // A scene swap mid-push would otherwise leave a stick stuck over.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => TouchControls.reset());
   }
 
   // Only attendants hold lives and clear the lot; the driver just racks up hits.

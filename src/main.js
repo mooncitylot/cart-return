@@ -14,3 +14,7 @@ const game = new Phaser.Game({
   },
   scene: [BootScene, MenuScene, GameScene, HudScene],
 });
+
+// The on-screen sticks live in the DOM, over the canvas Phaser just made, so
+// they stay thumb-sized however far the canvas is scaled down to fit a phone.
+TouchControls.init(document.getElementById('game'));

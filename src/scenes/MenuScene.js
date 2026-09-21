@@ -5,6 +5,10 @@ class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    // No sticks or shift buttons on the menu: the mode cards are the targets.
+    TouchControls.setLayout(0);
+    TouchControls.setActions(null);
+
     const cx = CFG.view.w / 2;
     const cy = (CFG.view.h + CFG.hudHeight) / 2;
 
@@ -24,12 +28,28 @@ class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.option(cx, cy - 40, '1', 'ONE PLAYER', 'arrows or WASD', 'solo');
-    this.option(cx, cy + 40, '2', 'TWO PLAYER', 'co-op: P1 arrows · P2 WASD', 'coop');
-    this.option(cx, cy + 120, '3', 'VERSUS', 'attendant arrows · moped WASD', 'versus');
+    // Touch players drive on-screen sticks, so name those instead of the keys.
+    const touch = TouchControls.active;
+    this.option(cx, cy - 40, '1', 'ONE PLAYER', touch ? 'stick, bottom left' : 'arrows or WASD', 'solo');
+    this.option(
+      cx,
+      cy + 40,
+      '2',
+      'TWO PLAYER',
+      touch ? 'co-op: a stick each' : 'co-op: P1 arrows · P2 WASD',
+      'coop'
+    );
+    this.option(
+      cx,
+      cy + 120,
+      '3',
+      'VERSUS',
+      touch ? 'attendant left · moped right' : 'attendant arrows · moped WASD',
+      'versus'
+    );
 
     this.add
-      .text(cx, cy + 184, 'press 1, 2 or 3', {
+      .text(cx, cy + 184, TouchControls.active ? 'tap a mode' : 'press 1, 2 or 3', {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: '#6fa8d4',

@@ -3,9 +3,10 @@
 // slows for a cart train, and it flattens anyone it touches. Extending LotPlayer
 // keeps the scene's player loop unchanged.
 class MopedPlayer extends LotPlayer {
-  constructor(scene, index, keySet) {
+  constructor(scene, index, keySet, sticks = []) {
     super(scene, index, [keySet], {
       label: 'RIDER',
+      sticks,
       kind: 'driver',
       canPushCarts: false,
       texture: 'moped',

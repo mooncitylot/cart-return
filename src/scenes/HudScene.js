@@ -105,6 +105,7 @@ class HudScene extends Phaser.Scene {
     text(cy - 50, d.headline, '34px', '#e8eef5');
     text(cy - 6, d.scores, '17px', '#cbd6e2');
     if (d.verdict) text(cy + 26, d.verdict, '15px', '#7fd6a6');
-    text(cy + 62, 'R restart  ·  M menu', '14px', '#8a97a6');
+    const again = TouchControls.active ? '↺ restart  ·  ☰ menu' : 'R restart  ·  M menu';
+    text(cy + 62, again, '14px', '#8a97a6');
   }
 }

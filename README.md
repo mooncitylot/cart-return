@@ -53,6 +53,21 @@ their own score, lives and cart train, races the other to the corrals, and can
 pick up carts the other one scattered. The shift ends when both players are out,
 and the higher score wins it.
 
+### Phones and tablets
+
+On a touchscreen the game puts an on-screen stick in the bottom corner — bottom
+left for player one, bottom right for the second player, which matches the sides
+of the split screen — plus ↺ and ☰ buttons for the R and M keys. Touch
+anywhere in a stick's corner and the ring jumps to your thumb, so you never have
+to look down to find it. The sticks are analogue: a half push is a half-speed
+walk, which is what you want threading between parked cars. Keys and sticks work
+at the same time, so a tablet with a keyboard can use either.
+
+Play in landscape — the lot is a landscape shape, and portrait letterboxes it
+down to a strip (the sticks move off the canvas into the space below it there, so
+they stay thumb-sized either way). `?touch=1` forces the controls on for testing
+on a desktop, `?touch=0` off.
+
 ### Versus
 
 Player one works the lot as usual. Player two rides a moped around it with one
@@ -162,9 +177,10 @@ drive through each other, and a car already inside a crossing always clears it.
 
 ```
 index.html          page shell + script tags (classic scripts, so file:// works)
-style.css           page chrome; CSS scales the canvas to the window
+style.css           page chrome; CSS scales the canvas to the window, and styles the touch sticks
 src/config.js       CFG: lot geometry, lanes, signals, player/cart/ped/power-up tuning, scoring
 src/powerup.js      Powerup: one badge on the ground — its kind, its timer, its pulse
+src/touch.js        TouchControls: the on-screen sticks and buttons, a DOM layer over the canvas
 src/player.js       LotPlayer: one attendant's sprite, keys, cart train, lives, score, effects
 src/moped.js        MopedPlayer: the versus rider — a LotPlayer that rides instead of pushes
 src/main.js         Phaser.Game boot (arcade physics)

@@ -8,6 +8,9 @@ class LotPlayer {
     this.kind = opts.kind || 'attendant';
     this.canPushCarts = opts.canPushCarts !== false;
     this.keySets = keySets; // each: { up, down, left, right } Phaser Keys
+    // On-screen sticks bound to this player, if any. Analogue, and summed with
+    // the keys, so a tablet player can pick up a bluetooth keyboard mid-shift.
+    this.sticks = opts.sticks || [];
 
     // Solo starts dead centre of the return zone; two players start either side.
     const offset = scene.playerCount > 1 ? (index === 0 ? -60 : 60) : 0;
@@ -126,7 +129,9 @@ class LotPlayer {
   }
 
   // Sums every key set bound to this player, so solo play answers to both
-  // arrows and WASD while two-player splits them.
+  // arrows and WASD while two-player splits them, then folds in the on-screen
+  // sticks. Keys are all-or-nothing; a stick is analogue, so the result carries
+  // a length of up to 1 and the walk speed scales with it.
   readDirection() {
     let x = 0;
     let y = 0;
@@ -136,7 +141,17 @@ class LotPlayer {
       if (k.up.isDown) y -= 1;
       if (k.down.isDown) y += 1;
     });
-    return new Phaser.Math.Vector2(Phaser.Math.Clamp(x, -1, 1), Phaser.Math.Clamp(y, -1, 1));
+    const v = new Phaser.Math.Vector2(
+      Phaser.Math.Clamp(x, -1, 1),
+      Phaser.Math.Clamp(y, -1, 1)
+    );
+    this.sticks.forEach((s) => {
+      const p = s.vector();
+      v.x += p.x;
+      v.y += p.y;
+    });
+    if (v.length() > 1) v.normalize();
+    return v;
   }
 
   handleInput(now) {
@@ -147,15 +162,17 @@ class LotPlayer {
     }
 
     const v = this.readDirection();
-    if (v.x === 0 && v.y === 0) {
+    const push = v.length();
+    if (push < 0.001) {
       body.setVelocity(0, 0);
       return;
     }
 
-    v.normalize();
-    this.facing.set(v.x, v.y);
+    // Facing stays a unit vector — the cart train is strung out along it — but
+    // the velocity keeps the stick's deflection.
+    this.facing.set(v.x / push, v.y / push);
     body.setVelocity(v.x * this.speed(), v.y * this.speed());
-    this.sprite.setRotation(v.angle());
+    this.sprite.setRotation(this.facing.angle());
   }
 
   // Where cart `index` of the train belongs when there is no trail to follow

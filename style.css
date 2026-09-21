@@ -26,6 +26,9 @@ h1 {
   font-weight: 600;
 }
 /* Phaser renders at a fixed internal resolution; CSS scales it to fit the page. */
+#game {
+  position: relative; /* the touch overlay is pinned to the canvas */
+}
 #game canvas {
   display: block;
   width: 100% !important;
@@ -37,4 +40,137 @@ h1 {
   margin: 14px 0 0;
   color: var(--muted);
   font-size: 12px;
+}
+
+/* ---- touch controls ----
+   On-screen sticks for phones and tablets, laid over the canvas as DOM
+   elements: the canvas is scaled to fit the page, so a stick drawn inside it
+   would end up thumbnail-sized on a phone. Sizes are in vmin so they stay
+   thumb-sized whatever the canvas does. The whole overlay is hidden until
+   touch.js finds a touchscreen. */
+#touch {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* touch.js keeps the box on the canvas, wherever the scale manager put it */
+  z-index: 2;
+  pointer-events: none; /* only the controls themselves take input */
+  --stick: clamp(104px, 26vmin, 190px);
+}
+.stick-zone {
+  position: absolute;
+  bottom: 6%;
+  width: calc(var(--stick) * 1.35);
+  height: calc(var(--stick) * 1.35);
+  display: none;
+  pointer-events: auto;
+  touch-action: none; /* a drag here is a walk, never a page scroll */
+}
+.stick-zone.on { display: block; }
+.stick-zone.left { left: 2%; }
+.stick-zone.right { right: 2%; }
+.stick-base {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--stick);
+  height: var(--stick);
+  margin: calc(var(--stick) / -2) 0 0 calc(var(--stick) / -2);
+  border-radius: 50%;
+  border: 2px solid rgba(111, 168, 212, 0.45);
+  background: radial-gradient(circle, rgba(20, 26, 33, 0.5), rgba(20, 26, 33, 0.22));
+  opacity: 0.35;
+  transition: opacity 0.12s ease-out;
+}
+.stick-zone.active .stick-base { opacity: 0.9; }
+.stick-thumb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44%;
+  height: 44%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(232, 238, 245, 0.7);
+  background: rgba(107, 214, 165, 0.35);
+}
+.stick-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* just above the stick's resting ring, so it reads as that stick's name */
+  top: calc(50% - var(--stick) / 2 - 20px);
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: rgba(232, 238, 245, 0.55);
+}
+.touch-buttons {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+}
+.touch-btn {
+  display: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid rgba(111, 168, 212, 0.45);
+  background: rgba(14, 17, 22, 0.6);
+  color: var(--ink);
+  font: 18px/1 ui-monospace, monospace;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.touch-btn.on { display: block; }
+.touch-rotate {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* A phone screen is mostly lot and not much else: give the canvas the width,
+   and in landscape — how this is actually played — the whole viewport. */
+body.touch #wrap {
+  max-width: none;
+  padding: 8px 8px 16px;
+}
+/* The keyboard line under the lot is no use on a touchscreen, and in portrait
+   it lands right on top of the sticks. */
+body.touch .hint { display: none; }
+@media (orientation: landscape) and (pointer: coarse) {
+  body.touch #wrap { padding: 0; }
+  body.touch h1,
+  body.touch .hint { display: none; }
+  /* A phone held sideways is wider than the lot is tall, so width alone is the
+     wrong fit: cap it at whatever the screen height can show of that aspect. */
+  body.touch #game canvas {
+    width: min(100%, calc(100dvh * var(--game-aspect, 1.615))) !important;
+    margin: 0 auto;
+    border-radius: 0;
+  }
+}
+
+/* Portrait is all letterbox — the lot is a landscape shape — so the sticks come
+   off the canvas and sit in the dead space under it, still thumb-sized. */
+@media (orientation: portrait) and (pointer: coarse) {
+  body.touch #wrap { padding-bottom: 42dvh; }
+  body.touch #touch {
+    position: fixed;
+    left: 0 !important;
+    top: auto !important;
+    bottom: 0;
+    width: 100% !important;
+    height: 40dvh !important;
+  }
+  .stick-zone { bottom: 8%; }
+  .touch-buttons { top: auto; bottom: 8%; right: 50%; transform: translateX(50%); }
+  body.touch .touch-rotate { display: block; }
 }
