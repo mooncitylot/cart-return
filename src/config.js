@@ -43,7 +43,10 @@ const CFG = {
     { x: 1700, w: 180 }, // entry
     { x: 2010, w: 180 }, // exit
   ],
-  dropZone: { x: 1855, y: 1137, w: 300, h: 62 }, // centre x/y — push carts here
+  // Centre x/y — push carts here. Sat off the storefront's centre line on
+  // purpose: dead centre would straddle the entrance drive below, and traffic
+  // coming onto that drive would surface inside the return zone.
+  dropZone: { x: 1960, y: 1137, w: 300, h: 62 },
 
   // ---- parking ----
   // Two stall fields either side of the entrance drive. Stalls are laid out in
@@ -119,7 +122,7 @@ const CFG = {
   ],
 
   player: {
-    spawn: { x: 1855, y: 1137 },
+    spawn: { x: 1960, y: 1137 }, // only the y is read; x follows the return zone
     speed: 235, // the lot is big; a slow walk across it is just dead time
     speedPerCart: 13, // each cart in the train costs this much top speed
     minSpeed: 150,
@@ -192,7 +195,7 @@ const CFG = {
   },
 
   peds: {
-    count: 34,
+    count: 22,
     speed: 52,
     pauseChance: 0.003, // per-frame chance a pedestrian stops to browse
     reach: 16, // how close counts as having arrived at a waypoint

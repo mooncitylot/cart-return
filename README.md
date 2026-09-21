@@ -147,7 +147,10 @@ skylights and HVAC packs, a red entry canopy over the west end of the storefront
 a receiving yard of trailer docks behind the west wall, and a tyre-centre annex
 off the east end. All of that is outside the physics world — the walkable lot is
 the pavement in front of it. The storefront sidewalk runs the full paved width
-and holds the cart return, in front of the doors.
+and holds the cart return, in front of the exit door. The return sits east of the
+storefront's centre line rather than on it: dead centre would straddle the
+entrance drive running up from the south, and traffic joining that drive would
+surface inside the zone.
 
 Two pedestrian walkway spines run the depth of the lot, one either side of the
 entrance drive, striped with a crosswalk everywhere they meet a driving aisle.
