@@ -70,7 +70,12 @@ class HudScene extends Phaser.Scene {
     const second = d.players[1];
     this.p2.setText(second ? this.playerLine(second, d.maxTrain) : '');
     if (second) this.p2.setColor(this.p2Color[second.kind]);
-    this.middle.setText(`LOT ${d.level}   CARTS LEFT ${d.left}   ${Math.ceil(d.time)}s`);
+    // A progress figure, not a headcount: the store keeps restocking the
+    // corrals, so what matters is how much of the quota is handed over.
+    const quota = d.quota || d.left;
+    this.middle.setText(
+      `LOT ${d.level}   RETURNED ${quota - d.left}/${quota}   ${Math.ceil(d.time)}s`
+    );
 
     const frac = Phaser.Math.Clamp(d.time / CFG.levelSeconds, 0, 1);
     this.timerBar.width = CFG.view.w * frac;

@@ -28,6 +28,7 @@ class GameScene extends Phaser.Scene {
     this.timeLeft = CFG.levelSeconds;
     this.gameOver = false;
     this.frame = 0;
+    this.pedTarget = CFG.peds.count; // grows a head per lot, like the traffic does
     this.registry.set('gameover', null);
 
     this.buildIslands();
@@ -38,6 +39,7 @@ class GameScene extends Phaser.Scene {
     this.buildPeds();
     this.createPlayers();
     this.buildPowerups();
+    this.buildRestock();
     this.setupCameras();
     this.bindInput();
     this.publish();
@@ -438,15 +440,27 @@ class GameScene extends Phaser.Scene {
     this.spawnCarts();
   }
 
+  addCart(x, y, home) {
+    const cart = {
+      sprite: this.add.image(x, y, 'cart').setDepth(4),
+      home,
+      state: 'idle',
+      claimedBy: null,
+    };
+    this.carts.push(cart);
+    return cart;
+  }
+
+  // The carts a lot opens with. The target is a quota, not a headcount: the
+  // store keeps sending more out, so it is deliveries that clear the lot.
   spawnCarts() {
     CFG.corrals.forEach((def) => {
       for (let i = 0; i < def.carts; i++) {
         const home = { x: def.x - ((def.carts - 1) * 44) / 2 + i * 44, y: def.y };
-        const sprite = this.add.image(home.x, home.y, 'cart').setDepth(4);
-        this.carts.push({ sprite, home, state: 'idle', claimedBy: null });
+        this.addCart(home.x, home.y, home);
       }
     });
-    this.cartsTotal = this.carts.length;
+    this.cartsTotal = CFG.levelQuota;
     this.cartsDelivered = 0;
   }
 
@@ -774,10 +788,12 @@ class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.peds, this.obstacles, (ped) => this.unstick(ped));
   }
 
-  spawnPed() {
-    const at = this.randomWalkPoint();
+  // `at` places them somewhere specific — the store doorway, for a shopper the
+  // store has just sent out. Left off, they simply appear on the walkways.
+  spawnPed(at) {
+    const spot = at || this.randomWalkPoint();
     const ped = this.peds
-      .create(at.x, at.y, Phaser.Utils.Array.GetRandom(BootScene.PED_KEYS))
+      .create(spot.x, spot.y, Phaser.Utils.Array.GetRandom(BootScene.PED_KEYS))
       .setDepth(6);
     ped.body.setCircle(9, 5, 3);
     ped.setCollideWorldBounds(true);
@@ -873,6 +889,15 @@ class GameScene extends Phaser.Scene {
     }
 
     this.releaseClaim(ped);
+
+    // The store has been sending people out, so the lot is carrying more of a
+    // crowd than it should: whoever finishes a trip next goes back inside.
+    if (this.crowdSize() > this.pedTarget) {
+      ped.goal = 'leave';
+      this.routeTo(ped, this.doorPoint(0));
+      return;
+    }
+
     const roll = Math.random();
 
     if (roll < CFG.peds.tidyChance) {
@@ -913,19 +938,122 @@ class GameScene extends Phaser.Scene {
     ped.fetching = null;
   }
 
-  // A free-ish bay in whichever corral is closest to where the cart was found.
+  // How full a corral is. Carts already on their way there count, or two
+  // shoppers heading for the same bay would both read it as empty.
+  corralLoad(corral) {
+    const inBay = (x, y) =>
+      Math.abs(x - corral.x) < CFG.stallW * 1.5 + 18 &&
+      Math.abs(y - corral.y) < CFG.stallH / 2;
+
+    let n = this.carts.filter((c) => c.state === 'idle' && inBay(c.sprite.x, c.sprite.y)).length;
+    this.peds.children.iterate((ped) => {
+      if (ped && ped.cart && ped.dropAt && inBay(ped.dropAt.x, ped.dropAt.y)) n += 1;
+    });
+    return n;
+  }
+
+  openCorrals() {
+    return CFG.corrals.filter((c) => this.corralLoad(c) < CFG.restock.corralCap);
+  }
+
+  // Where the store sends the next cart: the emptiest bay that still has room.
+  // Restocking follows the attendants around the lot that way — whichever
+  // corral they just cleared out is the one that fills back up.
+  emptiestCorral() {
+    const open = this.openCorrals().map((c) => ({ c, load: this.corralLoad(c) }));
+    if (open.length === 0) return null;
+    Phaser.Utils.Array.Shuffle(open); // random tiebreak between equally empty bays
+    return open.reduce((a, b) => (b.load < a.load ? b : a)).c;
+  }
+
+  // One bay within a corral to set a cart down in.
+  corralBay(corral) {
+    const slot = Phaser.Math.Between(0, corral.carts - 1);
+    return { x: corral.x - ((corral.carts - 1) * 44) / 2 + slot * 44, y: corral.y };
+  }
+
+  // A free-ish bay in whichever corral is closest to where the cart was found,
+  // skipping any that are already packed out.
   corralSlot(x, y) {
-    let best = CFG.corrals[0];
+    const open = this.openCorrals();
+    const pool = open.length ? open : CFG.corrals;
+    let best = pool[0];
     let bestD = Infinity;
-    CFG.corrals.forEach((c) => {
+    pool.forEach((c) => {
       const d = Phaser.Math.Distance.Between(x, y, c.x, c.y);
       if (d < bestD) {
         bestD = d;
         best = c;
       }
     });
-    const slot = Phaser.Math.Between(0, best.carts - 1);
-    return { x: best.x - ((best.carts - 1) * 44) / 2 + slot * 44, y: best.y };
+    return this.corralBay(best);
+  }
+
+  // ---------- the store restocking the lot ----------
+
+  buildRestock() {
+    this.nextShopperAt = this.time.now + CFG.restock.firstDelay * 1000;
+  }
+
+  liveCarts() {
+    return this.carts.filter((c) => c.state !== 'done').length;
+  }
+
+  // Shoppers already walking back to the door don't count towards the crowd:
+  // they are on their way off the lot, and counting them would keep flagging
+  // surplus that is already leaving until the whole crowd had gone home.
+  crowdSize() {
+    let n = 0;
+    this.peds.children.iterate((ped) => {
+      if (ped && !ped.leaving && ped.goal !== 'leave') n += 1;
+    });
+    return n;
+  }
+
+  // Where shoppers step out of the store and back into it. The east door is the
+  // exit and the west one the entry, which is how the storefront is drawn.
+  doorPoint(which) {
+    const d = CFG.doors[which];
+    const spread = Math.min(CFG.restock.doorSpread, d.w / 2 - 10);
+    return { x: d.x + Phaser.Math.Between(-spread, spread), y: CFG.sidewalk.y + 22 };
+  }
+
+  // Someone finishes their shop and wheels the cart out of the exit door. They
+  // rack it in a corral and then carry on as an ordinary shopper — which is
+  // what keeps the corrals stocked while the attendants haul trains away.
+  sendShopperOut() {
+    if (this.liveCarts() >= CFG.restock.maxCarts) return false;
+    const corral = this.emptiestCorral();
+    if (!corral) return false;
+
+    const at = this.doorPoint(1);
+    const ped = this.spawnPed(at);
+    this.releaseClaim(ped); // spawning retargets them; that trip is cancelled
+
+    const bay = this.corralBay(corral);
+    const cart = this.addCart(at.x, at.y, bay);
+    cart.state = 'ped';
+    cart.sprite.setDepth(5);
+
+    ped.cart = cart;
+    ped.goal = 'tidy';
+    ped.dropAt = bay;
+    this.routeTo(ped, bay);
+
+    // Fade both up, so they walk out of the doorway rather than popping into
+    // existence on the sidewalk.
+    [ped, cart.sprite].forEach((o) => {
+      o.setAlpha(0);
+      this.tweens.add({ targets: o, alpha: 1, duration: 320 });
+    });
+    return true;
+  }
+
+  updateRestock(now) {
+    if (now < this.nextShopperAt) return;
+    this.sendShopperOut();
+    const [lo, hi] = CFG.restock.interval;
+    this.nextShopperAt = now + Phaser.Math.Between(lo, hi) * 1000;
   }
 
   // ---------- movement ----------
@@ -933,7 +1061,7 @@ class GameScene extends Phaser.Scene {
   updatePeds(now) {
     const speed = CFG.peds.speed * this.speedMul;
     this.peds.children.iterate((ped) => {
-      if (!ped) return;
+      if (!ped || ped.leaving) return;
       if (ped.cart) this.carryCart(ped);
 
       if (now < ped.pauseUntil) {
@@ -991,6 +1119,20 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (ped.goal === 'leave') {
+      // Through the door and gone. The fade runs outside the pedestrian loop,
+      // so nothing is removed from the group mid-iteration.
+      ped.leaving = true;
+      ped.body.setVelocity(0, 0);
+      this.tweens.add({
+        targets: ped,
+        alpha: 0,
+        duration: 260,
+        onComplete: () => ped.destroy(),
+      });
+      return;
+    }
+
     ped.pauseUntil = now + Phaser.Math.Between(300, 1500);
     this.retarget(ped);
   }
@@ -1026,6 +1168,7 @@ class GameScene extends Phaser.Scene {
   // Walked into a parked car or a planter. Sidestep around it rather than
   // abandoning the trip, and only give up after a few failed attempts.
   unstick(ped) {
+    if (ped.leaving) return;
     if (!ped.route || ped.route.length === 0) {
       this.retarget(ped);
       return;
@@ -1136,6 +1279,9 @@ class GameScene extends Phaser.Scene {
       cart.sprite.destroy();
       this.cartsDelivered += 1;
     });
+    // Handed over and gone — dropped from the list so the store's cap on live
+    // carts counts what is actually out on the lot.
+    this.carts = this.carts.filter((c) => c.state !== 'done');
     p.train = [];
 
     const gained = n * CFG.score.perCart + (n - 1) * CFG.score.chainBonus;
@@ -1430,7 +1576,9 @@ class GameScene extends Phaser.Scene {
     this.carts.forEach((c) => c.sprite && c.sprite.destroy());
     this.carts = [];
     this.spawnCarts();
+    this.pedTarget += 1;
     this.spawnPed();
+    this.buildRestock();
 
     // Badges and effects do not carry across lots.
     this.powerups.forEach((pu) => pu.destroy());
@@ -1503,6 +1651,7 @@ class GameScene extends Phaser.Scene {
     this.registry.set('hud', {
       level: this.level,
       left: this.cartsTotal - this.cartsDelivered,
+      quota: this.cartsTotal,
       time: Math.max(0, this.timeLeft),
       maxTrain: CFG.cart.maxTrain,
       mode: this.mode,
@@ -1531,6 +1680,7 @@ class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
 
     this.updatePeds(time);
+    this.updateRestock(time);
     this.updatePowerups(time);
 
     this.players.forEach((p) => {

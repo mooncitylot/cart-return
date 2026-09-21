@@ -31,9 +31,12 @@ The title screen picks the mode:
 Everyone wears a coloured ring so you can pick yourself out of the crowd of
 shoppers. The lot is far bigger than the window, so the camera follows you and a
 minimap in the corner shows the whole site: the cart return in green, loose carts
-in white, players as coloured dots, and a box around what each player can see. In
-two-player the screen splits down the middle, one half each, with the minimap on
-the seam.
+in white, power-up badges in their own colours, players as coloured dots, and a
+box around what each player can see. In two-player the screen splits down the
+middle, one half each, with the minimap on the seam.
+
+The HUD counts `RETURNED n/18` — how much of the lot's quota is handed over, not
+how many carts are left standing in the corrals.
 
 | Key    | Action                                   |
 | ------ | ---------------------------------------- |
@@ -69,9 +72,10 @@ whenever it hits something.
 
 ## Rules
 
-- 18 carts sit in six corrals spread across the lot. Return them all to clear it;
-  each new lot runs 12% faster. In two-player, carts returned by either attendant
-  count.
+- Return 18 carts to clear a lot; each new one runs 12% faster. In two-player,
+  carts returned by either attendant count. That 18 is a quota, not a headcount
+  — the store keeps restocking the corrals behind you, so you never run out of
+  work before the clock runs out.
 - You can push up to 8 carts at once. The train trails behind you along the path
   you actually walked, and every extra cart costs you top speed. The haul back to
   the store is long, so it is nearly always worth filling the train first.
@@ -85,6 +89,14 @@ whenever it hits something.
   halfway to the store does not just sit there waiting — the lot slowly undoes
   your work. They only take carts that are already loose; carts sitting in a
   corral are left alone, and no two shoppers go for the same one.
+- **The store restocks the lot.** Every 7-13 seconds a shopper wheels a cart out
+  of the exit door, walks it out into the rows and racks it, then carries on as
+  an ordinary shopper. They always head for the emptiest corral with room in it,
+  so restocking follows you around the lot: whichever bay you just cleared is
+  the one that fills back up. A corral holds 6 before they rack elsewhere, and
+  the store holds off entirely once 32 carts are live on the lot. Shoppers who
+  finish a trip while the lot is over its usual crowd walk back in through the
+  entry door and off the board, so the place doesn't silt up with people.
 - 190 seconds per lot. Running out costs every player still on the clock a life.
 - Score: 120 per cart, +40 for each cart beyond the first in one delivery, 600 per
   lot cleared plus 4 per second remaining, 60 for a power-up.
@@ -188,8 +200,9 @@ from, so adding or removing art means editing those arrays and nothing else.
 `src/config.js` holds everything: aisle positions/speeds/extents and `gap` (bigger
 gap = sparser traffic), `fields` and `stallRows` and `parkedFill`, corral positions
 and cart counts, `lights` timings, `peds.count`, player speed and the per-cart
-speed penalty, `levelSeconds`, `lives`, `levelSpeedStep`, the `moped` block (hit
-radius, stun lengths, spawn), the `powerups` block and the score table.
+speed penalty, `levelSeconds`, `levelQuota`, `lives`, `levelSpeedStep`, the
+`moped` block (hit radius, stun lengths, spawn), the `restock` and `powerups`
+blocks and the score table.
 
 Two scales live in there and it matters which one you are editing:
 
@@ -210,6 +223,15 @@ rack a stray cart), `errandChance` (walk out to a car), and whatever is left ove
 as a stroll along the walkways — plus `strayRange`, how far they will go out of
 their way for a cart, and `stuckLimit`/`stuckCooldown`, how many shoves off a
 parked car it takes before they abandon the trip.
+
+`restock` sets how the store feeds the lot: `interval` and `firstDelay` for how
+often a shopper comes out with a cart, `maxCarts` for how many live carts the lot
+will hold before the store stops sending more, `corralCap` for how many one
+corral takes before shoppers rack elsewhere, and `doorSpread` for how wide the
+doorway they step out of is. `levelQuota` is the separate figure: how many
+deliveries clear a lot. Turning `interval` down or `corralCap` up makes for a
+busier, more forgiving lot; turning them the other way makes carts something you
+have to go and find.
 
 `powerups` sets the drop rate (`interval`, `maxActive`, `firstDelay`), how long a
 badge waits (`lifetime`), where they land (`aisleChance`, `minPlayerDist`), what a

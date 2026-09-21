@@ -97,6 +97,17 @@ const CFG = {
     { axis: 'y', pos: 3220, dir: 1, speed: 145, gap: 660, from: 1195, to: 2660 },
   ],
 
+  // The store keeps working while you do: shoppers come out of the exit door
+  // pushing a cart and rack it in a corral, so the corrals restock behind you
+  // and the lot never runs dry before the clock does.
+  restock: {
+    firstDelay: 6, // seconds into the lot before the first one comes out
+    interval: [7, 13], // seconds between shoppers, rolled fresh each time
+    maxCarts: 32, // live carts in the lot before the store holds off
+    corralCap: 6, // carts a corral holds before shoppers rack elsewhere
+    doorSpread: 60, // px either side of the door centre they step out of
+  },
+
   // Cart corrals, dropped into stall rows. x,y = centre of a three-stall bay.
   corrals: [
     { x: 595, y: 1461, carts: 3 },
@@ -197,6 +208,9 @@ const CFG = {
 
   lives: 3,
   levelSeconds: 190,
+  // Deliveries that clear a lot. A quota rather than a headcount, because the
+  // store restocks the corrals faster than you can ever empty them.
+  levelQuota: 18,
   levelSpeedStep: 0.12, // traffic + pedestrian speed multiplier added per lot
 
   score: {
