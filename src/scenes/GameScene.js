@@ -187,8 +187,9 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  // Where a walkway spine meets a driving aisle, paint a crossing. Bars run
-  // along the way the pedestrian is walking, as they do on a real one.
+  // Where a walkway spine meets a driving aisle, paint a crossing. The spines
+  // run north-south across east-west aisles, so the bars lie across the
+  // pedestrian's path, square to the kerbs either side of the lane.
   drawCrosswalks(g) {
     const half = CFG.laneWidth / 2;
     CFG.walks
@@ -198,8 +199,10 @@ class GameScene extends Phaser.Scene {
           .filter((a) => a.axis === 'x' && a.pos > w.y - half && a.pos < w.y + w.h + half)
           .forEach((a) => {
             g.fillStyle(0xd8dee6, 0.34);
-            for (let x = w.x + 3; x < w.x + w.w - 8; x += 17) {
-              g.fillRect(x, a.pos - half - 5, 9, CFG.laneWidth + 10);
+            const top = a.pos - half - 5;
+            const bottom = a.pos + half + 5;
+            for (let y = top; y < bottom - 8; y += 17) {
+              g.fillRect(w.x + 3, y, w.w - 11, 9);
             }
           });
       });
