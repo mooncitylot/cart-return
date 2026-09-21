@@ -53,7 +53,14 @@ class HudScene extends Phaser.Scene {
       return `${score}   TAKEDOWNS ${p.takedowns}`;
     }
     if (!p.alive) return `${score}   OUT`;
-    return `${score}   ${'♥'.repeat(p.lives)}   PUSHING ${p.train}/${maxTrain}`;
+    // Running power-ups, each with the seconds it has left, in config order.
+    const power = (p.effects || [])
+      .map((e) => `${e.label} ${Math.ceil(e.left / 1000)}s`)
+      .join(' ');
+    const line = `${score}   ${'♥'.repeat(p.lives)}   PUSHING ${p.train}/${
+      p.maxTrain || maxTrain
+    }`;
+    return power ? `${line}   ${power}` : line;
   }
 
   render(d) {

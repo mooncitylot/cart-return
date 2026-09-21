@@ -134,6 +134,52 @@ const CFG = {
     followLerp: 0.35, // how sharply the train swings around when you turn
   },
 
+  // Power-ups. Badges drop into the lot on a timer, sit for a while, and hand
+  // the attendant who walks over one a timed effect. Only attendants collect
+  // them; the versus rider rides straight past.
+  powerups: {
+    maxActive: 3, // badges on the ground at once
+    firstDelay: 8, // seconds into the lot before the first one drops
+    interval: [13, 22], // seconds between drops, rolled fresh each time
+    lifetime: 22, // seconds a badge waits to be collected before it fades
+    warnMs: 2500, // a badge blinks over its last moments; so do expiring effects
+    pickupRadius: 26,
+    aisleChance: 0.65, // the rest land on the walkways; aisles mean live traffic
+    minPlayerDist: 320, // never drops in someone's lap — a pickup is a detour
+    shieldStunMs: 250, // the stagger when a shield takes a hit for you
+    shieldGraceMs: 1100, // and the grace after, so one car can't clip you twice
+    // The three kinds. `weight` is the roll; `ms` is how long the effect runs.
+    kinds: [
+      {
+        key: 'shield',
+        label: 'SHIELD',
+        weight: 1,
+        ms: 9000,
+        color: 0x6fa8d4,
+        text: '#8fc4ec',
+      },
+      {
+        key: 'speed',
+        label: 'SPEED',
+        weight: 1,
+        ms: 8000,
+        color: 0xe8b13c,
+        text: '#f0c86a',
+        mul: 1.55, // top speed multiplier while it runs
+      },
+      {
+        key: 'strength',
+        label: 'STRENGTH',
+        weight: 1,
+        ms: 13000,
+        color: 0xb46fe0,
+        text: '#c898ea',
+        extraTrain: 6, // carts on top of the usual limit
+        cartEase: 0.3, // and what is left of the per-cart speed penalty
+      },
+    ],
+  },
+
   peds: {
     count: 34,
     speed: 52,
@@ -157,6 +203,7 @@ const CFG = {
     perCart: 120,
     chainBonus: 40, // extra, per cart beyond the first, in a single delivery
     levelClear: 600,
+    powerup: 60, // for walking over a badge, before whatever it does for you
     timeBonus: 4, // per second left when the lot is cleared
     // versus mode, for the driver
     takedown: 400,

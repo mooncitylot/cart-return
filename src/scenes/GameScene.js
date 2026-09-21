@@ -37,6 +37,7 @@ class GameScene extends Phaser.Scene {
     this.buildTraffic();
     this.buildPeds();
     this.createPlayers();
+    this.buildPowerups();
     this.setupCameras();
     this.bindInput();
     this.publish();
@@ -539,6 +540,13 @@ class GameScene extends Phaser.Scene {
         g.fillStyle(0xd8dee6, 0.45);
         g.fillCircle(c.sprite.x, c.sprite.y, 24);
       }
+    });
+
+    this.powerups.forEach((pu) => {
+      g.fillStyle(0x0e1116, 1);
+      g.fillCircle(pu.x, pu.y, 38);
+      g.fillStyle(pu.def.color, 1);
+      g.fillCircle(pu.x, pu.y, 28);
     });
 
     this.players.forEach((p) => {
@@ -1096,8 +1104,8 @@ class GameScene extends Phaser.Scene {
     return this.players.filter((p) => p.alive && p.canPushCarts);
   }
 
-  tryPickup(p) {
-    if (p.train.length >= CFG.cart.maxTrain) return;
+  tryPickup(p, now) {
+    if (p.train.length >= p.maxTrain(now)) return;
     const cart = this.carts.find(
       (c) =>
         c.state === 'idle' &&
@@ -1167,7 +1175,90 @@ class GameScene extends Phaser.Scene {
     p.train = [];
   }
 
+  // ---------- power-ups ----------
+
+  buildPowerups() {
+    this.powerups = [];
+    this.nextPowerAt = this.time.now + CFG.powerups.firstDelay * 1000;
+  }
+
+  // Somewhere worth walking to. Mostly out in the drive aisles, where picking
+  // one up means stepping into live traffic; the rest on the walkways, which
+  // are safe but a long way from wherever the carts are.
+  powerupSpot() {
+    for (let i = 0; i < 24; i++) {
+      const p =
+        Math.random() < CFG.powerups.aisleChance
+          ? this.randomLotPoint()
+          : this.randomWalkPoint();
+      if (this.inIsland(p.x, p.y) || this.inCorral(p.x, p.y)) continue;
+      // Not on top of the return zone, another badge, or anyone's feet.
+      const dz = CFG.dropZone;
+      if (Math.abs(p.x - dz.x) < 240 && Math.abs(p.y - dz.y) < 130) continue;
+      if (this.powerups.some((q) => Phaser.Math.Distance.Between(q.x, q.y, p.x, p.y) < 260)) {
+        continue;
+      }
+      const near = this.activeAttendants().some(
+        (a) => Phaser.Math.Distance.Between(a.x, a.y, p.x, p.y) < CFG.powerups.minPlayerDist
+      );
+      if (near) continue;
+      return p;
+    }
+    return null;
+  }
+
+  updatePowerups(now) {
+    this.powerups = this.powerups.filter((pu) => {
+      if (pu.update(now)) return true;
+      pu.destroy();
+      return false;
+    });
+
+    // The timer rolls on even when the lot is full of badges, so clearing one
+    // doesn't instantly conjure the next.
+    if (now >= this.nextPowerAt) {
+      if (this.powerups.length < CFG.powerups.maxActive) {
+        const spot = this.powerupSpot();
+        if (spot) this.powerups.push(new Powerup(this, Powerup.rollKind(), spot.x, spot.y, now));
+      }
+      const [lo, hi] = CFG.powerups.interval;
+      this.nextPowerAt = now + Phaser.Math.Between(lo, hi) * 1000;
+    }
+
+    // Only attendants collect: the versus rider rides straight over them.
+    this.activeAttendants().forEach((p) => {
+      const pu = this.powerups.find(
+        (q) => Phaser.Math.Distance.Between(q.x, q.y, p.x, p.y) < CFG.powerups.pickupRadius
+      );
+      if (pu) this.collectPowerup(p, pu, now);
+    });
+  }
+
+  collectPowerup(p, pu, now) {
+    p.grant(pu.key, now);
+    p.score += CFG.score.powerup;
+    this.banner(p.x, p.y, pu.def.label, pu.def.text);
+    this.powerups = this.powerups.filter((q) => q !== pu);
+    pu.destroy();
+    this.publish();
+  }
+
   // ---------- hazards ----------
+
+  // A shield eats one hit from anything with a motor and breaks. The train and
+  // the life both survive, and a moment of grace follows so the same car
+  // cannot clip you again before you are out of its way.
+  absorbHit(p, now) {
+    if (!p.hasEffect('shield', now)) return false;
+    p.clearEffect('shield');
+    p.stunUntil = now + CFG.powerups.shieldStunMs;
+    p.invulnUntil = now + CFG.powerups.shieldGraceMs;
+    p.sprite.body.setVelocity(0, 0);
+    this.flash(Powerup.def('shield').color);
+    this.banner(p.x, p.y, 'SHIELD HELD', Powerup.def('shield').text);
+    this.publish();
+    return true;
+  }
 
   shrink(rect, dx, dy) {
     return new Phaser.Geom.Rectangle(
@@ -1341,6 +1432,11 @@ class GameScene extends Phaser.Scene {
     this.spawnCarts();
     this.spawnPed();
 
+    // Badges and effects do not carry across lots.
+    this.powerups.forEach((pu) => pu.destroy());
+    this.buildPowerups();
+    this.players.forEach((pl) => pl.clearEffects());
+
     const lead = this.players[0];
     this.banner(lead.x, lead.y, `LOT ${this.level}`, '#8fc4ec');
     this.publish();
@@ -1403,6 +1499,7 @@ class GameScene extends Phaser.Scene {
   }
 
   publish() {
+    const now = this.time.now;
     this.registry.set('hud', {
       level: this.level,
       left: this.cartsTotal - this.cartsDelivered,
@@ -1415,6 +1512,8 @@ class GameScene extends Phaser.Scene {
         score: p.score,
         lives: p.lives === null ? null : Math.max(0, p.lives),
         train: p.train.length,
+        maxTrain: p.maxTrain(now),
+        effects: p.activeEffects(now).map((e) => ({ label: e.label, left: e.left })),
         takedowns: p.takedowns || 0,
         alive: p.alive,
       })),
@@ -1432,13 +1531,15 @@ class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
 
     this.updatePeds(time);
+    this.updatePowerups(time);
 
     this.players.forEach((p) => {
       p.handleInput(time, dt);
       p.updateTrain();
+      p.updateEffects(time);
       if (!p.alive || !p.canPushCarts) return;
 
-      this.tryPickup(p);
+      this.tryPickup(p, time);
       this.tryDeliver(p);
 
       // Step off the respawn point and the rider can hit you again.
@@ -1465,7 +1566,7 @@ class GameScene extends Phaser.Scene {
       if (!p.alive || !p.canPushCarts || time < p.invulnUntil) continue;
 
       if (this.hitByTraffic(p)) {
-        this.runOver(p, time);
+        if (!this.absorbHit(p, time)) this.runOver(p, time);
       } else if (
         this.driver &&
         this.driver.alive &&
@@ -1473,8 +1574,15 @@ class GameScene extends Phaser.Scene {
         Phaser.Math.Distance.Between(this.driver.x, this.driver.y, p.x, p.y) <
           CFG.moped.hitRadius
       ) {
-        this.rundown(this.driver, p, time);
-      } else if (this.hitByPed(p)) {
+        // Bounce the rider off a shield: no takedown, no points, and the same
+        // spill they get from hitting anything else.
+        if (this.absorbHit(p, time)) {
+          this.driver.spinOut(time, CFG.moped.stunOnHit);
+        } else {
+          this.rundown(this.driver, p, time);
+        }
+      } else if (this.hitByPed(p) && !p.hasEffect('shield', time)) {
+        // Shoppers just bounce off a shield — it only breaks on a motor.
         this.bumpedByPed(p, time);
       }
       if (this.gameOver) return;

@@ -2,7 +2,9 @@
 
 Top-down arcade game: you work the parking lot. Collect loose carts from the
 corrals scattered around the lot, push them back to the store's cart return, and
-don't get flattened by traffic or bowled over by shoppers.
+don't get flattened by traffic or bowled over by shoppers. Power-up badges drop
+around the lot as you work: a shield, a speed boost and a strength boost that
+lets you haul a longer train.
 
 ## Run it
 
@@ -85,7 +87,28 @@ whenever it hits something.
   corral are left alone, and no two shoppers go for the same one.
 - 190 seconds per lot. Running out costs every player still on the clock a life.
 - Score: 120 per cart, +40 for each cart beyond the first in one delivery, 600 per
-  lot cleared plus 4 per second remaining.
+  lot cleared plus 4 per second remaining, 60 for a power-up.
+
+### Power-ups
+
+Badges drop into the lot every 13-22 seconds, up to three on the ground at once,
+and sit for 22 seconds before fading — they blink over their last couple of
+seconds, so you can tell when one isn't worth the trip. Walking over one collects
+it; pickup is automatic, same as carts. Roughly two in three land out in a drive
+aisle, where collecting one means stepping into live traffic, and the rest on the
+walkways. They never drop within 320px of an attendant, so a badge is always a
+detour. They show on the minimap in their own colour.
+
+| Badge | | Runs for | |
+| --- | --- | --- | --- |
+| **Shield** | blue, shield icon | 9s | Eats one hit from anything with a motor, then breaks: you keep the life and the cart train, and get a moment of grace so the same car can't clip you twice. For its whole duration shoppers just bounce off you. In versus it refuses the rider's takedown outright — no points for them — and spills them the way hitting anything else does. |
+| **Speed** | amber, lightning icon | 8s | Top speed x1.55. It scales the floor as well as the ceiling, so it is still worth having when you are dragging a full train. |
+| **Strength** | purple, dumbbell icon | 13s | Push 14 carts instead of 8, and each one costs you only 30% of the usual speed penalty. It gates new pickups only: a long train gathered under it keeps following once it lapses. |
+
+Each player's running effects show in the HUD with the seconds left on them, and
+as coloured rings around their marker. Picking up a kind you already have tops
+its timer up. Losing a life, or clearing the lot, wipes everything you were
+carrying. Only attendants collect — in versus the rider rides straight over them.
 
 ## The lot
 
@@ -128,8 +151,9 @@ drive through each other, and a car already inside a crossing always clears it.
 ```
 index.html          page shell + script tags (classic scripts, so file:// works)
 style.css           page chrome; CSS scales the canvas to the window
-src/config.js       CFG: lot geometry, lanes, signals, player/cart/ped tuning, scoring
-src/player.js       LotPlayer: one attendant's sprite, keys, cart train, lives, score
+src/config.js       CFG: lot geometry, lanes, signals, player/cart/ped/power-up tuning, scoring
+src/powerup.js      Powerup: one badge on the ground — its kind, its timer, its pulse
+src/player.js       LotPlayer: one attendant's sprite, keys, cart train, lives, score, effects
 src/moped.js        MopedPlayer: the versus rider — a LotPlayer that rides instead of pushes
 src/main.js         Phaser.Game boot (arcade physics)
 src/scenes/
@@ -150,6 +174,8 @@ with a `this.load.image(key, 'assets/…')` in a `preload()` and keep the keys:
   to heading)
 - `moped` — the versus moped and its rider, drawn pointing right
 - `cart`
+- `power_shield`, `power_speed`, `power_strength` — power-up badges, drawn
+  upright (they are never rotated to a heading); one per `CFG.powerups.kinds` row
 - `parked_0`…`parked_5` — parked cars, drawn pointing up
 - `traffic_<body>_<paint>` — sedan / hatch / suv / van / truck in 8 paints, drawn
   pointing right; the scene flips or rotates them per lane
@@ -163,7 +189,7 @@ from, so adding or removing art means editing those arrays and nothing else.
 gap = sparser traffic), `fields` and `stallRows` and `parkedFill`, corral positions
 and cart counts, `lights` timings, `peds.count`, player speed and the per-cart
 speed penalty, `levelSeconds`, `lives`, `levelSpeedStep`, the `moped` block (hit
-radius, stun lengths, spawn) and the score table.
+radius, stun lengths, spawn), the `powerups` block and the score table.
 
 Two scales live in there and it matters which one you are editing:
 
@@ -184,6 +210,14 @@ rack a stray cart), `errandChance` (walk out to a car), and whatever is left ove
 as a stroll along the walkways — plus `strayRange`, how far they will go out of
 their way for a cart, and `stuckLimit`/`stuckCooldown`, how many shoves off a
 parked car it takes before they abandon the trip.
+
+`powerups` sets the drop rate (`interval`, `maxActive`, `firstDelay`), how long a
+badge waits (`lifetime`), where they land (`aisleChance`, `minPlayerDist`), what a
+shield costs the attendant who spends one (`shieldStunMs`, `shieldGraceMs`), and
+`kinds` — the three badges themselves, each with its roll `weight`, duration `ms`,
+colours and its own numbers (`mul` for speed, `extraTrain`/`cartEase` for
+strength). Adding a fourth kind means a row there, an icon in
+`BootScene.makePowerup()`, and a branch in `LotPlayer` for what it does.
 
 `camera` tunes the follow lerp, the zoom used for split-screen halves, and the
 minimap size. The mode is chosen at the title screen and read from the registry

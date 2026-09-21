@@ -25,6 +25,7 @@ class BootScene extends Phaser.Scene {
 
     this.makeCart();
     this.makeMoped();
+    CFG.powerups.kinds.forEach((k) => this.makePowerup(`power_${k.key}`, k));
 
     // Parked cars point up (nose-in stalls); traffic points right.
     BootScene.PARKED_KEYS = [0xb44a4a, 0x4a72b4, 0xb49a4a, 0x5aa07a, 0x8a8f96, 0xa86bc4].map(
@@ -139,6 +140,37 @@ class BootScene extends Phaser.Scene {
     g.fillRect(32, mid - 4, 4, 8);
 
     g.generateTexture('moped', w, h);
+    g.destroy();
+  }
+
+  // Power-up badge: the same dark tile and coloured rim for all three, so they
+  // read as one class of thing from across the lot, with the icon carrying the
+  // difference. Drawn upright — badges are never rotated to a heading.
+  makePowerup(key, def) {
+    const s = 30;
+    const g = this.gfx();
+    const pts = (list) => g.fillPoints(list.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
+
+    g.fillStyle(0x161b22, 0.92);
+    g.fillRoundedRect(1, 1, s - 2, s - 2, 7);
+    g.lineStyle(2, def.color, 1);
+    g.strokeRoundedRect(1, 1, s - 2, s - 2, 7);
+    g.fillStyle(def.color, 1);
+
+    if (def.key === 'shield') {
+      pts([[15, 5], [24, 9], [24, 16], [15, 25], [6, 16], [6, 9]]);
+      g.fillStyle(0x161b22, 1); // hollow it out so it reads as a shield, not a blob
+      pts([[15, 9], [20, 11], [20, 16], [15, 21], [10, 16], [10, 11]]);
+    } else if (def.key === 'speed') {
+      pts([[18, 4], [10, 16], [14, 16], [12, 26], [21, 13], [16, 13], [20, 4]]);
+    } else {
+      // dumbbell: bar with a plate at each end
+      g.fillRect(10, 13, 10, 4);
+      g.fillRoundedRect(5, 8, 5, 14, 2);
+      g.fillRoundedRect(20, 8, 5, 14, 2);
+    }
+
+    g.generateTexture(key, s, s);
     g.destroy();
   }
 

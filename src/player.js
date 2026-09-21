@@ -43,6 +43,12 @@ class LotPlayer {
     // Held until the attendant walks clear of their respawn point, so the
     // rider can't camp the return zone and farm the same player.
     this.spawnSafe = true;
+
+    // Power-up effects: kind -> the timestamp it runs out at. Wiped on respawn,
+    // so losing a life costs you whatever you were carrying.
+    this.effects = {};
+    // Rings around the marker, one per running effect.
+    this.aura = scene.add.graphics().setDepth(6);
   }
 
   get x() {
@@ -53,11 +59,70 @@ class LotPlayer {
     return this.sprite.y;
   }
 
+  // Speed boosts scale the floor as well as the ceiling, so the boost is still
+  // worth something to someone dragging a full train.
   speed() {
+    const now = this.scene.time.now;
+    const boost = this.hasEffect('speed', now) ? Powerup.def('speed').mul : 1;
+    const perCart =
+      CFG.player.speedPerCart *
+      (this.hasEffect('strength', now) ? Powerup.def('strength').cartEase : 1);
     return Math.max(
-      CFG.player.minSpeed,
-      CFG.player.speed - this.train.length * CFG.player.speedPerCart
+      CFG.player.minSpeed * boost,
+      CFG.player.speed * boost - this.train.length * perCart
     );
+  }
+
+  // How many carts this player may be pushing right now. Strength only gates
+  // new pickups: a train already gathered keeps following once it lapses.
+  maxTrain(now) {
+    const extra = this.hasEffect('strength', now) ? Powerup.def('strength').extraTrain : 0;
+    return CFG.cart.maxTrain + extra;
+  }
+
+  // ---- power-ups ----
+
+  // Picking the same kind up again tops the timer up rather than restarting it.
+  grant(kind, now) {
+    this.effects[kind] = Math.max(this.effects[kind] || 0, now) + Powerup.def(kind).ms;
+  }
+
+  hasEffect(kind, now) {
+    return (this.effects[kind] || 0) > now;
+  }
+
+  effectLeft(kind, now) {
+    return Math.max(0, (this.effects[kind] || 0) - now);
+  }
+
+  clearEffect(kind) {
+    delete this.effects[kind];
+  }
+
+  clearEffects() {
+    this.effects = {};
+    this.aura.clear();
+  }
+
+  // In config order, so the HUD never reshuffles as effects come and go.
+  activeEffects(now) {
+    return CFG.powerups.kinds
+      .filter((k) => this.hasEffect(k.key, now))
+      .map((k) => ({ key: k.key, label: k.label, left: this.effectLeft(k.key, now) }));
+  }
+
+  // One ring per running effect, stacked outwards from the marker, each
+  // blinking over its last moments.
+  updateEffects(now) {
+    const g = this.aura;
+    g.clear();
+    if (!this.alive) return;
+    g.setPosition(this.x, this.y);
+    this.activeEffects(now).forEach((e, i) => {
+      const dim = e.left < CFG.powerups.warnMs && Math.floor(now / 110) % 2;
+      g.lineStyle(2, Powerup.def(e.key).color, dim ? 0.2 : 0.85);
+      g.strokeCircle(0, 0, 20 + i * 5);
+    });
   }
 
   // Sums every key set bound to this player, so solo play answers to both
@@ -111,8 +176,10 @@ class LotPlayer {
     const head = this.trail[0];
     if (!head || Phaser.Math.Distance.Between(head.x, head.y, this.x, this.y) >= this.trailStep) {
       this.trail.unshift({ x: this.x, y: this.y, r: this.sprite.rotation });
-      const max =
-        Math.ceil(((CFG.cart.maxTrain + 1) * CFG.cart.spacing) / this.trailStep) + 8;
+      // Sized off the train actually held, so a strength-boosted one still has
+      // enough recorded path behind it to string out along.
+      const carts = Math.max(this.train.length, CFG.cart.maxTrain);
+      const max = Math.ceil(((carts + 1) * CFG.cart.spacing) / this.trailStep) + 8;
       if (this.trail.length > max) this.trail.length = max;
     }
     if (this.train.length === 0) return;
@@ -135,6 +202,7 @@ class LotPlayer {
 
   respawn(now, invulnMs) {
     this.spawnSafe = true;
+    this.clearEffects();
     this.sprite.setPosition(this.spawn.x, this.spawn.y);
     this.marker.setPosition(this.spawn.x, this.spawn.y);
     this.sprite.body.setVelocity(0, 0);
@@ -145,6 +213,7 @@ class LotPlayer {
 
   eliminate() {
     this.alive = false;
+    this.clearEffects();
     this.marker.setVisible(false);
     this.sprite.setVisible(false);
     this.sprite.body.setVelocity(0, 0);
