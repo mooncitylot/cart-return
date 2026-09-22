@@ -198,6 +198,18 @@ const CFG = {
   stallW: 72,
   stallH: 104,
   parkedFill: 0.68, // fraction of stalls that hold a parked car
+  stallJitter: { x: 4, y: 6 }, // nobody parks dead centre; how far off they sit
+
+  // Pole lighting. After dark a big-box lot is mostly read by its light: a
+  // grid of twin-head poles standing on the shared head line between each
+  // back-to-back stall pair, which is where a real lot puts them — clear of
+  // the drive aisles, costing the nose of a stall rather than a whole one.
+  lighting: {
+    spacing: 470, // px between poles along a row pair
+    baseR: 11, // the concrete base, which is solid
+    poolR: 260, // how far the pool of light reaches across the asphalt
+    headSpan: 15, // how far each of the two heads sits off the mast
+  },
 
   // Driving aisles. `pos` is the centre line of the lane.
   // axis 'x' = horizontal lane (dir 1 drives right), axis 'y' = vertical lane
@@ -387,12 +399,21 @@ const CFG = {
 
   colors: {
     grass: 0x2b3a2e,
+    grassMown: 0x31422f, // the lighter stripe a mower leaves
     asphalt: 0x23272d,
+    // Asphalt is never one fill: it is laid in passes, patched, sealed and
+    // cracked, and after a few winters that is most of what you see.
+    asphaltPass: 0x262b31,
+    asphaltPatch: 0x2c323a,
+    asphaltSeal: 0x1c2026,
+    crack: 0x14171c,
+    stain: 0x191c21, // the drip under where a car has sat all week
     aisle: 0x1d2126,
+    tyreWear: 0x1a1e23,
     sidewalk: 0x3d444c,
     stallPaint: 0x505963,
+    stallStripe: 0x939ca8, // the paint itself, which is a lot brighter than the kerbs
     accessible: 0x3c6ea8,
-    store: 0x323a44,
     storeRoof: 0x39424e,
     storeTrim: 0x4c5765,
     hvac: 0x2a313a,
@@ -413,6 +434,16 @@ const CFG = {
     signBlue: 0x2c5f9e,
     signRed: 0xa8413a,
 
+    // Lot lighting, and the site furniture that goes with it.
+    poleMast: 0x3c444e,
+    poleBase: 0x4d5560,
+    poleLight: 0xffd9a0,
+    fence: 0x49515b,
+    yardPlant: 0x3b434d, // compactor, baler, the boxes in the dock yard
+    roofMembrane: 0x3e4855,
+    roofSeam: 0x353d48,
+    roofDrain: 0x272d35,
+
     // The store interior reads as a completely different place from the lot
     // outside: a bright, light-floored warehouse club instead of dim
     // asphalt, with orange steel racking instead of dark shelving. The
@@ -426,7 +457,6 @@ const CFG = {
     shelfFrame: 0xdd7a2e,
     shelfFrameLit: 0xf2a25b, // top-lit face of the racking, for a rolled-steel highlight
     shelfFrameShade: 0xa8571c, // shadowed face
-    shelfSlat: 0x2b2f35,
     // Palette the stacked pallets on a shelf are picked from at random —
     // assorted packaged goods, not one flat slab of colour.
     boxPalette: [0x5c6c78, 0x7a6a4a, 0x6a4a48, 0x4a6a58, 0x685a76, 0x7a7262],

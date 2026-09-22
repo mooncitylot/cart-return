@@ -32,14 +32,27 @@ class BootScene extends Phaser.Scene {
     CFG.powerups.kinds.forEach((k) => this.makePowerup(`power_${k.key}`, k));
     CFG.obstacles.kinds.forEach((k) => this.makeObstacle(`obs_${k.key}`, k));
 
-    // Parked cars point up (nose-in stalls); traffic points right.
-    BootScene.PARKED_KEYS = [0xb44a4a, 0x4a72b4, 0xb49a4a, 0x5aa07a, 0x8a8f96, 0xa86bc4].map(
-      (color, i) => {
-        const key = `parked_${i}`;
-        this.makeParkedCar(key, color);
-        return key;
-      }
-    );
+    // Parked cars point up (nose-in stalls); traffic points right. Every
+    // body style in every colour: a row of one silhouette repeated is the
+    // thing that makes a car park read as wallpaper rather than a car park.
+    // Nothing is wider than 58 or longer than 98, so it stays in its stall.
+    const parkedBodies = [
+      { name: 'sedan', w: 46, h: 84 },
+      { name: 'hatch', w: 45, h: 74 },
+      { name: 'suv', w: 52, h: 92 },
+      { name: 'pickup', w: 52, h: 98 },
+      { name: 'van', w: 54, h: 96 },
+    ];
+    BootScene.PARKED_KEYS = [];
+    parkedBodies.forEach((b) => {
+      [0xb44a4a, 0x4a72b4, 0xb49a4a, 0x5aa07a, 0x8a8f96, 0xa86bc4, 0x3f4750, 0xc8ccd2].forEach(
+        (color, ci) => {
+          const key = `parked_${b.name}_${ci}`;
+          this.makeParkedCar(key, color, b);
+          BootScene.PARKED_KEYS.push(key);
+        }
+      );
+    });
 
     // Every body style in every colour, so traffic never looks like a convoy.
     const bodies = [
@@ -214,20 +227,45 @@ class BootScene extends Phaser.Scene {
     this.makeStaff(key, def.color);
   }
 
-  makeParkedCar(key, color) {
-    const w = 48;
-    const h = 86;
+  // One parked car, nose up. A pickup is a cab and an open bed, a van is
+  // one long box with a short screen, and the rest are a roof between two
+  // screens — which from above is the whole of what tells them apart.
+  makeParkedCar(key, color, body) {
+    const { w, h, name } = body;
     const g = this.gfx();
 
     g.fillStyle(color, 1);
-    g.fillRoundedRect(1, 0, w - 2, h, 7);
-    g.fillStyle(0x121820, 0.5); // windshield + rear glass
-    g.fillRoundedRect(7, 11, w - 14, 19, 3);
-    g.fillRoundedRect(7, h - 33, w - 14, 21, 3);
-    g.fillStyle(0x000000, 0.18); // roof
-    g.fillRect(7, 35, w - 14, h - 71);
+    g.fillRoundedRect(1, 0, w - 2, h, name === 'van' || name === 'pickup' ? 5 : 7);
+
+    if (name === 'pickup') {
+      g.fillStyle(0x121820, 0.5); // windscreen
+      g.fillRoundedRect(7, 12, w - 14, 18, 3);
+      g.fillStyle(0x000000, 0.2); // cab roof
+      g.fillRect(7, 32, w - 14, 18);
+      g.fillStyle(0x000000, 0.34); // the bed, open to the sky
+      g.fillRect(5, 54, w - 10, h - 62);
+      g.fillStyle(0xffffff, 0.05);
+      g.fillRect(5, 54, w - 10, 3);
+    } else if (name === 'van') {
+      g.fillStyle(0x121820, 0.5);
+      g.fillRoundedRect(7, 8, w - 14, 15, 3);
+      g.fillStyle(0x000000, 0.16); // one long roof, with its ribs
+      g.fillRect(6, 26, w - 12, h - 38);
+      g.fillStyle(0x000000, 0.1);
+      for (let y = 34; y < h - 18; y += 14) g.fillRect(6, y, w - 12, 2);
+    } else {
+      const screen = name === 'suv' ? 21 : 19;
+      g.fillStyle(0x121820, 0.5); // windscreen + rear glass
+      g.fillRoundedRect(7, 11, w - 14, screen, 3);
+      g.fillRoundedRect(7, h - screen - 14, w - 14, screen + 2, 3);
+      g.fillStyle(0x000000, 0.18); // roof
+      g.fillRect(7, 34, w - 14, h - 52 - screen);
+    }
+
+    g.fillStyle(0xffffff, 0.07); // the light running down one flank
+    g.fillRect(2, 4, 4, h - 8);
     g.fillStyle(0x15181c, 1); // tyres
-    [14, h - 30].forEach((y) => {
+    [13, h - 30].forEach((y) => {
       g.fillRect(-1, y, 5, 16);
       g.fillRect(w - 4, y, 5, 16);
     });

@@ -34,8 +34,10 @@ class GameScene extends Phaser.Scene {
     this.interiorPeds = [];
 
     this.buildIslands();
+    this.planLighting(); // before the cars: a pole costs a stall nose
     this.drawLot();
     this.buildScenery();
+    this.buildLotLighting(); // its own layers — pools under the cars, poles over
     this.buildInterior();
     this.buildDoors();
     this.buildCorrals();
@@ -98,6 +100,17 @@ class GameScene extends Phaser.Scene {
     );
   }
 
+  // Inside that block the bays alternate with hatched access aisles, which
+  // is what an accessible bay actually looks like — and nothing parks in
+  // one, so buildScenery() skips them too.
+  isAccessAisle(cx, cy) {
+    if (!this.isAccessible(cx, cy)) return false;
+    const field = CFG.fields.find((f) => cx > f.x1 && cx < f.x2);
+    if (!field) return false;
+    const { start } = this.fieldSlots(field);
+    return Math.round((cx - start - CFG.stallW / 2) / CFG.stallW) % 2 === 1;
+  }
+
   laneFrom(lane) {
     return lane.from === undefined ? 0 : lane.from;
   }
@@ -114,13 +127,13 @@ class GameScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(0);
 
     // landscaping everywhere, then asphalt punched over the lot itself
-    g.fillStyle(c.grass, 1);
-    g.fillRect(0, 0, CFG.width, CFG.height);
+    this.drawLandscaping(g);
     g.fillStyle(c.curb, 1);
     const pv = CFG.pavement;
     g.fillRect(pv.x - 6, pv.y - 6, pv.w + 12, pv.h + 12);
     g.fillStyle(c.asphalt, 1);
     g.fillRect(pv.x, pv.y, pv.w, pv.h);
+    this.weatherAsphalt(g);
 
     this.drawStalls(g);
     this.drawWalks(g);
@@ -134,7 +147,15 @@ class GameScene extends Phaser.Scene {
       if (a.axis === 'x') g.fillRect(from, a.pos - half, to - from, CFG.laneWidth);
       else g.fillRect(a.pos - half, from, CFG.laneWidth, to - from);
 
-      g.fillStyle(c.stallPaint, 0.3);
+      // Wheel paths: every car in the lane has driven the same two lines,
+      // and after a season that is the darkest asphalt on the site.
+      g.fillStyle(c.tyreWear, 0.55);
+      [-19, 19].forEach((o) => {
+        if (a.axis === 'x') g.fillRect(from, a.pos + o - 7, to - from, 14);
+        else g.fillRect(a.pos + o - 7, from, 14, to - from);
+      });
+
+      g.fillStyle(c.stallStripe, 0.28);
       if (a.axis === 'x') {
         for (let x = from; x < to; x += 38) g.fillRect(x, a.pos - 1, 20, 2);
       } else {
@@ -143,18 +164,137 @@ class GameScene extends Phaser.Scene {
     });
 
     this.drawCrosswalks(g);
+    this.drawStorefront(g);
     this.drawIslands(g);
     this.drawJunction(g);
     this.drawStore(g);
     this.drawCanopyRoof(); // overhead layer, so it has to come after the rest
   }
 
+  // A fixed-seed generator for everything weathered into the lot. The lot
+  // is meant to look like one particular lot that has been open a few
+  // years, not a different one every time you press restart.
+  lotRng() {
+    return new Phaser.Math.RandomDataGenerator(['cart-return-lot']);
+  }
+
+  // The site outside the paving: mown grass with the stripe a mower leaves,
+  // and a planted screen between the lot edge and the road.
+  drawLandscaping(g) {
+    const c = CFG.colors;
+    const rng = this.lotRng();
+
+    g.fillStyle(c.grass, 1);
+    g.fillRect(0, 0, CFG.width, CFG.height);
+    g.fillStyle(c.grassMown, 0.5);
+    for (let y = 0; y < CFG.height; y += 128) g.fillRect(0, y, CFG.width, 64);
+
+    // The road the site fronts onto, in the strip the paving leaves along
+    // the bottom of the world. It is where the drive lanes run off to, so
+    // it is also the answer to where all the traffic in the lot comes from.
+    const pv = CFG.pavement;
+    const road = { y: pv.y + pv.h + 8, h: CFG.height - (pv.y + pv.h + 8) };
+    g.fillStyle(c.asphalt, 1);
+    g.fillRect(0, road.y, CFG.width, road.h);
+    g.fillStyle(c.tyreWear, 0.5);
+    [road.y + 14, road.y + road.h - 14].forEach((y) => g.fillRect(0, y - 6, CFG.width, 12));
+    g.fillStyle(c.floorStripe, 0.4);
+    for (let x = 0; x < CFG.width; x += 64) g.fillRect(x, road.y + road.h / 2 - 1, 34, 3);
+
+    // A screen of planting down the strips the site plan leaves either
+    // side of the paving, which is the only ground the lot does not use.
+    const shrubs = [];
+    for (let y = pv.y + 40; y < road.y - 30; y += 74) {
+      shrubs.push([pv.x - 52, y]);
+      shrubs.push([pv.x + pv.w + 52, y]);
+    }
+    shrubs.forEach(([x, y]) => {
+      const jx = x + rng.between(-12, 12);
+      const jy = y + rng.between(-16, 16);
+      const r = 14 + rng.between(0, 9);
+      g.fillStyle(0x000000, 0.26);
+      g.fillCircle(jx + 4, jy + 5, r);
+      g.fillStyle(rng.between(0, 2) ? c.shrub : c.tree, 0.85);
+      g.fillCircle(jx, jy, r);
+      g.fillStyle(0x000000, 0.12);
+      g.fillCircle(jx + r * 0.3, jy + r * 0.3, r * 0.55);
+    });
+  }
+
+  // Asphalt is laid in passes, patched where the trenches went in, sealed
+  // in blocks and cracked by every winter since. Painting all of that on is
+  // what stops 3000px of parking reading as one flat rectangle.
+  weatherAsphalt(g) {
+    const c = CFG.colors;
+    const pv = CFG.pavement;
+    const rng = this.lotRng();
+
+    // The paving passes themselves: broad bands, each laid a shade off its
+    // neighbour, with a cold joint down the line between them.
+    for (let y = pv.y; y < pv.y + pv.h; y += 168) {
+      g.fillStyle(c.asphaltPass, rng.realInRange(0.18, 0.5));
+      g.fillRect(pv.x, y, pv.w, 168);
+      g.fillStyle(c.crack, 0.4);
+      g.fillRect(pv.x, y, pv.w, 2);
+    }
+
+    // Sealcoat: big irregular blocks of fresher black over the top.
+    for (let i = 0; i < 14; i++) {
+      const w = rng.between(240, 760);
+      const h = rng.between(150, 420);
+      g.fillStyle(c.asphaltSeal, rng.realInRange(0.14, 0.3));
+      g.fillRect(
+        rng.between(pv.x, pv.x + pv.w - w),
+        rng.between(pv.y, pv.y + pv.h - h),
+        w,
+        h
+      );
+    }
+
+    // Trench and pothole patches, lighter because they were laid later.
+    for (let i = 0; i < 18; i++) {
+      const w = rng.between(40, 220);
+      const h = rng.between(30, 90);
+      const x = rng.between(pv.x, pv.x + pv.w - w);
+      const y = rng.between(pv.y, pv.y + pv.h - h);
+      g.fillStyle(c.asphaltPatch, rng.realInRange(0.3, 0.55));
+      g.fillRect(x, y, w, h);
+      g.lineStyle(2, c.crack, 0.45);
+      g.strokeRect(x, y, w, h);
+    }
+
+    // Cracks: a walk of short segments, so they wander rather than ruling
+    // a straight line across the lot.
+    g.lineStyle(2, c.crack, 0.5);
+    for (let i = 0; i < 40; i++) {
+      let x = rng.between(pv.x, pv.x + pv.w);
+      let y = rng.between(pv.y, pv.y + pv.h);
+      const dir = rng.rotation();
+      for (let seg = 0; seg < rng.between(3, 9); seg++) {
+        const a = dir + rng.realInRange(-0.7, 0.7);
+        const len = rng.between(18, 54);
+        const nx = x + Math.cos(a) * len;
+        const ny = y + Math.sin(a) * len;
+        g.lineBetween(x, y, nx, ny);
+        x = nx;
+        y = ny;
+      }
+    }
+  }
+
+  // Stall paint, and the wear that goes with it: a lot restripes on a
+  // cycle, so no two lines are the same age and the ones under the busiest
+  // rows are nearly gone. The accessible bays get their hatched access
+  // aisle, which is the thing that actually reads as an accessible bay.
   drawStalls(g) {
+    const c = CFG.colors;
+    const rng = this.lotRng();
+
     CFG.stallRows.forEach((row) => {
       CFG.fields.forEach((field) => {
         const { n, start } = this.fieldSlots(field);
-        g.fillStyle(CFG.colors.stallPaint, 0.5);
-        g.fillRect(start, row.y + 2, n * CFG.stallW, 2);
+        g.fillStyle(c.stallStripe, 0.5);
+        g.fillRect(start, row.y + 2, n * CFG.stallW, 3);
 
         for (let i = 0; i < n; i++) {
           const x = start + i * CFG.stallW;
@@ -162,17 +302,153 @@ class GameScene extends Phaser.Scene {
           const cy = row.y + CFG.stallH / 2;
           if (this.inIsland(cx, cy)) continue;
 
-          if (this.isAccessible(cx, cy)) {
-            g.fillStyle(CFG.colors.accessible, 0.3);
-            g.fillRect(x + 4, row.y + 5, CFG.stallW - 8, CFG.stallH - 10);
-            g.fillStyle(CFG.colors.accessible, 0.9);
-          } else {
-            g.fillStyle(CFG.colors.stallPaint, 0.5);
+          // The oil a car drips over a week of sitting in the same bay.
+          if (rng.frac() < 0.4) {
+            g.fillStyle(c.stain, rng.realInRange(0.3, 0.6));
+            g.fillEllipse(cx + rng.between(-7, 7), cy + rng.between(-14, 14), 22, 30);
           }
-          g.fillRect(x - 1, row.y + 4, 2, CFG.stallH - 8);
-          if (i === n - 1) g.fillRect(x + CFG.stallW - 1, row.y + 4, 2, CFG.stallH - 8);
+
+          if (this.isAccessAisle(cx, cy)) {
+            this.drawAccessHatching(g, x, row.y);
+            g.fillStyle(c.accessible, 0.9);
+          } else if (this.isAccessible(cx, cy)) {
+            g.fillStyle(c.accessible, 0.32);
+            g.fillRect(x + 4, row.y + 5, CFG.stallW - 8, CFG.stallH - 10);
+            this.drawAccessSymbol(g, cx, cy);
+            g.fillStyle(c.accessible, 0.9);
+          } else {
+            g.fillStyle(c.stallStripe, rng.realInRange(0.35, 0.8));
+          }
+          g.fillRect(x - 1, row.y + 4, 3, CFG.stallH - 8);
+          if (i === n - 1) g.fillRect(x + CFG.stallW - 2, row.y + 4, 3, CFG.stallH - 8);
         }
       });
+    });
+  }
+
+  // One hatched no-parking aisle, filling its slot: diagonals wall to wall,
+  // the way it is painted out of a stencil in one pass.
+  drawAccessHatching(g, x, top) {
+    const w = CFG.stallW - 8;
+    const h = CFG.stallH - 10;
+    g.lineStyle(2, CFG.colors.stallStripe, 0.4);
+    for (let o = -h; o < w; o += 16) {
+      const t0 = Math.max(0, -o);
+      const t1 = Math.min(h, w - o);
+      if (t1 <= t0) continue;
+      g.lineBetween(x + 4 + o + t0, top + 5 + t0, x + 4 + o + t1, top + 5 + t1);
+    }
+  }
+
+  // The wheelchair symbol, as a lot paints it: a stencil, not a drawing.
+  drawAccessSymbol(g, cx, cy) {
+    const c = CFG.colors;
+    g.fillStyle(c.stallStripe, 0.8);
+    g.fillCircle(cx, cy - 15, 5);
+    g.fillRect(cx - 4, cy - 8, 8, 16);
+    g.fillStyle(c.stallStripe, 0.8);
+    g.lineStyle(4, c.stallStripe, 0.8);
+    g.strokeCircle(cx + 1, cy + 8, 11);
+  }
+
+  // ---------- lot lighting ----------
+
+  // The poles. A big-box lot stands them on the shared head line between
+  // each back-to-back stall pair, so they cost the nose of a stall instead
+  // of a whole one and never sit in a drive aisle. Each pool of light goes
+  // down under the cars; the mast and heads go over everybody, because a
+  // light pole is thirty feet of steel you walk underneath.
+  // Where the poles stand. Worked out before anything is placed, because
+  // the parked cars have to know to leave those stall noses alone.
+  planLighting() {
+    this.lightPoles = [];
+    const L = CFG.lighting;
+
+    for (let p = 0; p + 1 < CFG.stallRows.length; p += 2) {
+      const y = CFG.stallRows[p].y + CFG.stallH;
+      CFG.fields.forEach((field) => {
+        const { n, start } = this.fieldSlots(field);
+        const span = n * CFG.stallW;
+        const count = Math.max(1, Math.round(span / L.spacing));
+        for (let k = 1; k <= count; k++) {
+          const raw = start + (span * k) / (count + 1);
+          const x = start + Math.round((raw - start) / CFG.stallW) * CFG.stallW;
+          if (this.inIsland(x, y) || this.inCorral(x, y)) continue;
+          this.lightPoles.push({ x, y });
+        }
+      });
+    }
+  }
+
+  nearPole(cx, cy) {
+    return this.lightPoles.some(
+      (p) => Math.abs(p.x - cx) < CFG.stallW / 2 + 6 && Math.abs(p.y - cy) < 34
+    );
+  }
+
+  buildLotLighting() {
+    const L = CFG.lighting;
+    const pools = this.add.graphics().setDepth(2);
+    const poles = this.add.graphics().setDepth(12);
+    this.lightPoles.forEach((p) => {
+      this.drawLightPool(pools, p.x, p.y, L.poolR);
+      this.drawLightPole(poles, p.x, p.y, L);
+
+      const zone = this.add.zone(p.x, p.y, L.baseR * 2, L.baseR * 2);
+      this.physics.add.existing(zone, true);
+      this.scenery.add(zone);
+    });
+
+    // The storefront and the dock yard are lit too, from poles standing on
+    // the kerb rather than out in the rows.
+    [
+      [CFG.canopy.x - 60, CFG.sidewalk.y + 150],
+      [CFG.dropZone.x + 520, CFG.sidewalk.y + 150],
+      [CFG.dock.x + 90, CFG.dock.y + 140],
+      [CFG.dock.x + 90, CFG.dock.y + CFG.dock.h - 120],
+    ].forEach(([x, y]) => {
+      this.drawLightPool(pools, x, y, L.poolR * 0.9);
+      this.drawLightPole(poles, x, y, L);
+    });
+  }
+
+  // The pool itself: stacked rings of warm light, brightest under the pole
+  // and falling off to nothing. A twin-head throws wider across the rows
+  // than along them, so the pool is an ellipse, and where two of them meet
+  // the asphalt mottles the way a real lot's does.
+  drawLightPool(g, x, y, r) {
+    const steps = 11;
+    for (let i = steps; i > 0; i--) {
+      g.fillStyle(CFG.colors.poleLight, 0.022);
+      g.fillEllipse(x, y, (r * 2.3 * i) / steps, (r * 1.7 * i) / steps);
+    }
+    g.fillStyle(CFG.colors.poleLight, 0.07);
+    g.fillEllipse(x, y, r * 0.6, r * 0.42);
+  }
+
+  // Seen from straight above, a pole is its base, the mast foreshortened
+  // to the cap on top of it, and the two heads out on their arms — which
+  // at night are the brightest things on the site.
+  drawLightPole(g, x, y, L) {
+    g.fillStyle(CFG.colors.poleBase, 1);
+    g.fillCircle(x, y, L.baseR);
+    g.fillStyle(0x000000, 0.3);
+    g.fillCircle(x + 2, y + 2, L.baseR - 2);
+    g.fillStyle(CFG.colors.poleMast, 1);
+    g.fillCircle(x, y, L.baseR - 5);
+
+    [-1, 1].forEach((side) => {
+      const hx = x + side * (L.headSpan + 8);
+      g.fillStyle(CFG.colors.poleMast, 1); // the arm
+      g.fillRect(Math.min(x, hx), y - 2, Math.abs(hx - x), 5);
+      g.fillStyle(CFG.colors.poleLight, 0.16); // the glow off the lens
+      g.fillEllipse(hx, y, 40, 30);
+      g.fillStyle(CFG.colors.poleLight, 0.3);
+      g.fillEllipse(hx, y, 24, 19);
+      g.fillStyle(CFG.colors.poleLight, 0.95); // the lens
+      g.fillRoundedRect(hx - 9, y - 6, 18, 12, 3);
+      g.fillStyle(0xfffdf6, 1);
+      g.fillRoundedRect(hx - 5, y - 3, 10, 6, 2);
     });
   }
 
@@ -212,6 +488,73 @@ class GameScene extends Phaser.Scene {
             }
           });
       });
+  }
+
+  // The storefront run itself: the guard bollards that stop a car coming
+  // through the glass, the propane cage and the pallets of bagged goods a
+  // club merchandises outside, benches, and the kerb line the whole of it
+  // stands behind.
+  drawStorefront(g) {
+    const c = CFG.colors;
+    const y = CFG.sidewalk.y;
+    const h = CFG.sidewalk.h;
+    const rng = this.lotRng();
+
+    // Bollards along the kerb where they are actually needed — across the
+    // front of the glass — ducking round both doorways so nobody walks a
+    // train into one on the way in.
+    const guarded = { x1: CFG.canopy.x - 40, x2: CFG.doors[1].x + 420 };
+    for (let x = guarded.x1; x < guarded.x2; x += 88) {
+      if (CFG.doors.some((d) => Math.abs(x - d.x) < d.w / 2 + 40)) continue;
+      g.fillStyle(0x000000, 0.3);
+      g.fillCircle(x + 3, y + h - 12, 7);
+      g.fillStyle(c.floorStripe, 0.55);
+      g.fillCircle(x, y + h - 14, 7);
+      g.fillStyle(0xffffff, 0.14);
+      g.fillCircle(x - 2, y + h - 17, 3);
+    }
+
+    // Outdoor merchandising either side of the entrance: pallets of bagged
+    // stock under the canopy, and the caged propane exchange past them. All
+    // of it hugs the building face, so the walkway stays clear in front of
+    // it — which is both how a club stages it and what keeps the shoppers
+    // on the sidewalk out of it.
+    for (let i = 0; i < 6; i++) {
+      const x = CFG.canopy.x + 70 + i * 96;
+      const py = y + 6 + rng.between(0, 6);
+      g.fillStyle(0x000000, 0.3);
+      g.fillRect(x + 4, py + 5, 76, 54);
+      g.fillStyle(c.palletWood, 1);
+      g.fillRect(x, py, 76, 54);
+      g.fillStyle(rng.frac() < 0.5 ? 0x5d6670 : 0x6a5f52, 1);
+      g.fillRect(x + 5, py + 5, 66, 44);
+      g.fillStyle(0xffffff, 0.08);
+      g.fillRect(x + 5, py + 5, 66, 5);
+    }
+
+    const cage = { x: CFG.doors[1].x + 250, y: y + 8, w: 96, h: 56 };
+    g.fillStyle(0x000000, 0.3);
+    g.fillRect(cage.x + 4, cage.y + 5, cage.w, cage.h);
+    g.fillStyle(c.fence, 0.9);
+    g.fillRect(cage.x, cage.y, cage.w, cage.h);
+    g.fillStyle(0x23272d, 1);
+    g.fillRect(cage.x + 5, cage.y + 5, cage.w - 10, cage.h - 10);
+    g.fillStyle(0xb4bcc4, 0.85);
+    for (let k = 0; k < 8; k++) {
+      g.fillCircle(cage.x + 16 + (k % 4) * 22, cage.y + 22 + ((k / 4) | 0) * 22, 8);
+    }
+    g.fillStyle(c.signRed, 0.8);
+    g.fillRect(cage.x + 6, cage.y - 10, 44, 10);
+
+    // A bench either side of the doors, backs to the glass.
+    [CFG.doors[0].x - 190, CFG.doors[1].x + 150].forEach((bx) => {
+      g.fillStyle(0x000000, 0.3);
+      g.fillRect(bx + 3, y + 13, 96, 18);
+      g.fillStyle(0x4a5058, 1);
+      g.fillRect(bx, y + 10, 96, 18);
+      g.fillStyle(0x000000, 0.2);
+      for (let k = bx + 6; k < bx + 92; k += 12) g.fillRect(k, y + 10, 3, 18);
+    });
   }
 
   drawIslands(g) {
@@ -275,24 +618,94 @@ class GameScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(15);
     this.storeRoof = [g];
 
-    // the box itself
+    const rng = this.lotRng();
+
+    // The shadow the box throws across the site.
+    g.fillStyle(0x000000, 0.35);
+    g.fillRect(s.x + 16, s.y + 18, s.w, s.h);
+
+    // Parapet all the way round, then the membrane roof inside it.
     g.fillStyle(c.storeRoof, 1);
     g.fillRect(s.x, s.y, s.w, s.h);
-    g.fillStyle(c.store, 1);
-    g.fillRect(s.x + 14, s.y + 14, s.w - 28, s.h - 28);
+    g.fillStyle(c.storeTrim, 1);
+    g.fillRect(s.x, s.y, s.w, 5);
+    g.fillStyle(c.roofMembrane, 1);
+    g.fillRect(s.x + 16, s.y + 16, s.w - 32, s.h - 32);
 
-    // roof furniture: skylight grid and HVAC packs, like the real thing
-    g.fillStyle(c.skylight, 0.55);
-    for (let x = s.x + 90; x < s.x + s.w - 90; x += 168) {
-      for (let y = s.y + 90; y < s.y + s.h - 150; y += 150) {
-        g.fillRect(x, y, 96, 52);
+    // Membrane seams: it is welded down in rolls, so the whole roof is
+    // ruled one way at the roll width.
+    g.fillStyle(c.roofSeam, 1);
+    for (let x = s.x + 16; x < s.x + s.w - 16; x += 76) g.fillRect(x, s.y + 16, 2, s.h - 32);
+
+    // The shade the parapet drops back onto the membrane inside it.
+    for (let i = 5; i > 0; i--) {
+      const band = i * 4;
+      g.fillStyle(0x000000, 0.05);
+      g.fillRect(s.x + 16, s.y + 16, s.w - 32, band);
+      g.fillRect(s.x + 16, s.y + 16, band, s.h - 32);
+      g.fillRect(s.x + s.w - 16 - band, s.y + 16, band, s.h - 32);
+      g.fillRect(s.x + 16, s.y + s.h - 16 - band, s.w - 32, band);
+    }
+
+    // Skylights. A club daylights its floor off the roof, so they run in
+    // long regular rows — which from above is most of what the roof is.
+    for (let y = s.y + 74; y < s.y + s.h - 110; y += 116) {
+      for (let x = s.x + 66; x < s.x + s.w - 90; x += 96) {
+        g.fillStyle(0x000000, 0.22);
+        g.fillRect(x + 3, y + 4, 56, 30);
+        g.fillStyle(c.skylight, 0.85);
+        g.fillRect(x, y, 56, 30);
+        g.fillStyle(0xffffff, 0.14); // the dome catching the sky
+        g.fillRect(x + 3, y + 3, 50, 9);
+        g.fillStyle(0x000000, 0.2);
+        g.fillRect(x, y + 27, 56, 3);
       }
     }
-    g.fillStyle(c.hvac, 1);
-    for (let x = s.x + 150; x < s.x + s.w - 150; x += 236) {
-      g.fillRect(x, s.y + 60, 74, 48);
-      g.fillRect(x + 40, s.y + s.h - 230, 66, 44);
+
+    // Rooftop units, each on its curb with its fan grilles. Spread on a
+    // loose grid with a jitter: a plant deck is laid out to a structural
+    // bay, so they scatter but never land on top of one another.
+    for (let gy = 0; gy < 4; gy++) {
+      for (let gx = 0; gx < 5; gx++) {
+        if (rng.frac() < 0.2) continue;
+        const w = rng.between(58, 88);
+        const h = rng.between(42, 56);
+        const x = s.x + 90 + gx * ((s.w - 250) / 5) + rng.between(-24, 24);
+        const y = s.y + 70 + gy * ((s.h - 240) / 4) + rng.between(-18, 18);
+        g.fillStyle(0x000000, 0.3);
+        g.fillRect(x + 5, y + 6, w, h);
+        g.fillStyle(c.storeTrim, 1); // the curb it stands on
+        g.fillRect(x - 3, y - 3, w + 6, h + 6);
+        g.fillStyle(c.hvac, 1);
+        g.fillRect(x, y, w, h);
+        g.fillStyle(0x1c2128, 1);
+        [0.28, 0.72].forEach((f) => g.fillCircle(x + w * f, y + h / 2, 12));
+        g.fillStyle(0x4b5560, 0.8);
+        [0.28, 0.72].forEach((f) => g.fillCircle(x + w * f, y + h / 2, 4));
+      }
     }
+
+    // Roof drains, sitting in the shallow sump each one is set into.
+    for (let i = 0; i < 12; i++) {
+      const x = s.x + 150 + rng.between(0, s.w - 300);
+      const y = s.y + 120 + rng.between(0, s.h - 300);
+      g.fillStyle(0x000000, 0.12);
+      g.fillCircle(x, y, 22);
+      g.fillStyle(c.roofDrain, 1);
+      g.fillCircle(x, y, 9);
+      g.fillStyle(0x000000, 0.45);
+      g.fillCircle(x, y, 5);
+    }
+
+    // The roof hatch and its ladder cage, up over the back-of-house.
+    g.fillStyle(c.storeTrim, 1);
+    g.fillRect(s.x + 70, s.y + 44, 34, 30);
+    g.fillStyle(0x1f242b, 1);
+    g.fillRect(s.x + 74, s.y + 48, 26, 22);
+    g.fillStyle(c.hvac, 1);
+    g.fillRect(s.x + 108, s.y + 50, 22, 18);
+    g.lineStyle(2, c.storeTrim, 0.7);
+    for (let y = s.y + 52; y < s.y + 68; y += 5) g.lineBetween(s.x + 108, y, s.x + 130, y);
 
     // parapet along the front, then the storefront face below it. The doors
     // themselves are separate animated objects — see buildDoors().
@@ -323,7 +736,7 @@ class GameScene extends Phaser.Scene {
         .text(s.x + s.w / 2, s.y + s.h / 2, 'WHOLESALE', {
           fontFamily: 'monospace',
           fontSize: '84px',
-          color: '#3f4956',
+          color: '#59636f',
         })
         .setOrigin(0.5)
         .setDepth(15)
@@ -444,47 +857,187 @@ class GameScene extends Phaser.Scene {
     g.fillRect(k.x, y + h - 5, k.w, 5);
   }
 
-  // Receiving yard: dock doors along the west wall with trailers backed in.
+  // Receiving yard: dock doors along the west wall with trailers backed in,
+  // and the rest of what a yard is actually full of — painted bays, guard
+  // bollards, the compactor and baler, staged pallets, and a fence with a
+  // gate onto the lot so it reads as somewhere you are not supposed to be.
   drawDock(g) {
     const c = CFG.colors;
     const d = CFG.dock;
+    const rng = this.lotRng();
+
     g.fillStyle(c.dockPad, 1);
     g.fillRect(d.x, d.y, d.w, d.h);
+    // The pad is concrete, not asphalt: it is poured in bays with a joint
+    // between each, and the tractors have scrubbed it black by the doors.
+    g.lineStyle(2, 0x000000, 0.22);
+    for (let x = d.x + 60; x < d.x + d.w; x += 120) g.lineBetween(x, d.y, x, d.y + d.h);
+    for (let y = d.y + 66; y < d.y + d.h; y += 132) g.lineBetween(d.x, y, d.x + d.w, y);
+    g.fillStyle(0x000000, 0.2);
+    g.fillRect(d.x + d.w - 330, d.y, 330, d.h);
+
     g.fillStyle(c.storeTrim, 1);
     g.fillRect(d.x + d.w - 12, d.y, 12, d.h);
 
     for (let y = d.y + 40; y < d.y + d.h - 110; y += 132) {
+      // The bay itself: striped out on the concrete, with a dock leveller
+      // at the door and a rubber bumper either side of it.
+      g.fillStyle(c.stallStripe, 0.3);
+      g.fillRect(d.x + d.w - 320, y - 5, 3, 96);
+      g.fillRect(d.x + d.w - 320, y - 5, 300, 3);
+      g.fillRect(d.x + d.w - 320, y + 88, 300, 3);
       g.fillStyle(0x1a1e24, 1);
       g.fillRect(d.x + d.w - 26, y, 20, 86);
+      g.fillStyle(0x0f1216, 1);
+      g.fillRect(d.x + d.w - 30, y - 4, 6, 10);
+      g.fillRect(d.x + d.w - 30, y + 80, 6, 10);
+
+      const trailer = { x: d.x + d.w - 300, y: y + 6, w: 274, h: 74 };
+      g.fillStyle(0x000000, 0.3);
+      g.fillRect(trailer.x + 6, trailer.y + 7, trailer.w, trailer.h);
       g.fillStyle(c.trailer, 1);
-      g.fillRect(d.x + d.w - 300, y + 6, 274, 74);
-      g.fillStyle(0x8f98a3, 1);
-      g.fillRect(d.x + d.w - 300, y + 6, 18, 74);
-      g.fillStyle(0x15181c, 1);
-      g.fillRect(d.x + d.w - 190, y, 44, 8);
-      g.fillRect(d.x + d.w - 190, y + 78, 44, 8);
+      g.fillRect(trailer.x, trailer.y, trailer.w, trailer.h);
+      g.fillStyle(0x000000, 0.08); // roof bows down the length of the box
+      for (let x = trailer.x + 28; x < trailer.x + trailer.w - 10; x += 26) {
+        g.fillRect(x, trailer.y, 2, trailer.h);
+      }
+      g.fillStyle(0x8f98a3, 1); // the nose, and the landing gear under it
+      g.fillRect(trailer.x, trailer.y, 18, trailer.h);
+      g.fillStyle(0x5c646e, 1);
+      g.fillRect(trailer.x + 26, trailer.y + 8, 5, 58);
+      g.fillStyle(0x15181c, 1); // the bogie
+      g.fillRect(trailer.x + 110, y, 44, 8);
+      g.fillRect(trailer.x + 110, y + 78, 44, 8);
     }
+
+    this.drawYardPlant(g, d, rng);
   }
 
-  // Tyre centre off the east end, with its own little bay doors.
+  // The working half of the yard: compactor and baler against the wall,
+  // pallets and stacked bales staged out on the pad, guard bollards round
+  // the lot of it, and the fence line shutting it off from the parking.
+  drawYardPlant(g, d, rng) {
+    const c = CFG.colors;
+    const bottom = d.y + d.h;
+
+    // Trash compactor and cardboard baler, in the bay below the last dock.
+    [
+      { x: d.x + d.w - 210, y: bottom - 96, w: 190, h: 58, label: true },
+      { x: d.x + d.w - 330, y: bottom - 96, w: 104, h: 58, label: false },
+    ].forEach((m) => {
+      g.fillStyle(0x000000, 0.32);
+      g.fillRect(m.x + 6, m.y + 7, m.w, m.h);
+      g.fillStyle(c.yardPlant, 1);
+      g.fillRect(m.x, m.y, m.w, m.h);
+      g.fillStyle(0xffffff, 0.06);
+      g.fillRect(m.x, m.y, m.w, 6);
+      g.fillStyle(0x1e2228, 1);
+      for (let x = m.x + 12; x < m.x + m.w - 10; x += 22) g.fillRect(x, m.y + 12, 12, m.h - 24);
+      if (m.label) {
+        g.fillStyle(c.signRed, 0.8);
+        g.fillRect(m.x + 8, m.y + m.h - 12, 42, 7);
+      }
+    });
+
+    // Pallets and bales staged out on the pad, waiting to go back.
+    for (let i = 0; i < 9; i++) {
+      const x = d.x + 40 + rng.between(0, 200);
+      const y = d.y + 70 + rng.between(0, d.h - 240);
+      const w = rng.between(44, 66);
+      const h = rng.between(34, 48);
+      g.fillStyle(0x000000, 0.28);
+      g.fillRect(x + 4, y + 5, w, h);
+      g.fillStyle(c.palletWood, 1);
+      g.fillRect(x, y, w, h);
+      g.fillStyle(rng.frac() < 0.5 ? 0x6a5f52 : 0x5d6670, 1);
+      g.fillRect(x + 4, y + 4, w - 8, h - 8);
+      g.fillStyle(0xffffff, 0.07);
+      g.fillRect(x + 4, y + 4, w - 8, 4);
+    }
+
+    // Guard bollards along the wall, and the fence with its gate.
+    g.fillStyle(c.floorStripe, 0.85);
+    for (let y = d.y + 30; y < bottom - 20; y += 58) {
+      g.fillStyle(0x000000, 0.3);
+      g.fillCircle(d.x + d.w - 346, y + 2, 7);
+      g.fillStyle(c.floorStripe, 0.85);
+      g.fillCircle(d.x + d.w - 348, y, 7);
+    }
+
+    g.fillStyle(c.fence, 0.85);
+    g.fillRect(d.x - 10, d.y - 8, 10, d.h + 8);
+    g.fillRect(d.x - 10, d.y - 8, d.w + 10, 9);
+    g.lineStyle(1, c.fence, 0.5);
+    for (let x = d.x; x < d.x + d.w; x += 14) g.lineBetween(x, d.y - 8, x, d.y + 1);
+    for (let y = d.y; y < d.y + d.h; y += 14) g.lineBetween(d.x - 10, y, d.x, y);
+    g.fillStyle(c.signRed, 0.7); // the sign hung on the gate
+    g.fillRect(d.x + d.w - 200, d.y - 14, 46, 14);
+  }
+
+  // Tyre centre off the east end: the same building as the warehouse in
+  // miniature — parapet, membrane, a unit on the roof — with its bay doors
+  // on the front, the lanes cars queue up in painted on the apron outside,
+  // and the racks of stock the bays work out of.
   drawAnnex(g) {
     const c = CFG.colors;
     const a = CFG.annex;
+
+    g.fillStyle(0x000000, 0.35);
+    g.fillRect(a.x + 12, a.y + 14, a.w, a.h);
     g.fillStyle(c.storeRoof, 1);
     g.fillRect(a.x, a.y, a.w, a.h);
-    g.fillStyle(c.store, 1);
-    g.fillRect(a.x + 10, a.y + 10, a.w - 20, a.h - 20);
+    g.fillStyle(c.roofMembrane, 1);
+    g.fillRect(a.x + 12, a.y + 12, a.w - 24, a.h - 24);
+    g.fillStyle(c.roofSeam, 1);
+    for (let x = a.x + 12; x < a.x + a.w - 12; x += 76) g.fillRect(x, a.y + 12, 2, a.h - 24);
+    for (let i = 4; i > 0; i--) {
+      g.fillStyle(0x000000, 0.06);
+      g.fillRect(a.x + 12, a.y + 12, a.w - 24, i * 4);
+      g.fillRect(a.x + 12, a.y + 12, i * 4, a.h - 24);
+      g.fillRect(a.x + a.w - 12 - i * 4, a.y + 12, i * 4, a.h - 24);
+    }
+
+    g.fillStyle(c.skylight, 0.8); // a couple of skylights over the bays
+    [0, 1].forEach((k) => g.fillRect(a.x + 60 + k * 96, a.y + 150, 54, 28));
+    g.fillStyle(0x000000, 0.3); // and the unit on the roof
+    g.fillRect(a.x + 66, a.y + 66, 70, 44);
+    g.fillStyle(c.storeTrim, 1);
+    g.fillRect(a.x + 57, a.y + 57, 78, 52);
     g.fillStyle(c.hvac, 1);
     g.fillRect(a.x + 60, a.y + 60, 70, 44);
-    g.fillStyle(c.doors, 1);
-    for (let x = a.x + 34; x < a.x + a.w - 60; x += 86) {
-      g.fillRect(x, a.y + a.h - 22, 62, 18);
+    g.fillStyle(0x1c2128, 1);
+    [0.3, 0.7].forEach((f) => g.fillCircle(a.x + 60 + 70 * f, a.y + 82, 11));
+
+    // The bay doors, and the lanes painted on the apron in front of them.
+    const doorY = a.y + a.h - 26;
+    for (let k = 0; k < 3; k++) {
+      const x = a.x + 26 + k * 84;
+      g.fillStyle(0x0f1216, 1);
+      g.fillRect(x - 3, doorY - 3, 68, 26);
+      g.fillStyle(c.doors, 1);
+      g.fillRect(x, doorY, 62, 20);
+      g.fillStyle(0x4d5a52, 0.8);
+      for (let y = doorY + 3; y < doorY + 18; y += 5) g.fillRect(x + 2, y, 58, 2);
+      g.fillStyle(c.stallStripe, 0.3); // the lane the next car waits in
+      g.fillRect(x - 4, a.y + a.h, 2, 96);
+      g.fillRect(x + 64, a.y + a.h, 2, 96);
     }
+
+    // Stock racks down the side, and a stack of part-worns beside them.
+    for (let y = a.y + 150; y < a.y + a.h - 80; y += 46) {
+      g.fillStyle(0x000000, 0.3);
+      g.fillRect(a.x + a.w - 58, y + 4, 44, 32);
+      g.fillStyle(0x2a2f36, 1);
+      g.fillRect(a.x + a.w - 62, y, 44, 32);
+      g.fillStyle(0x3b424a, 1);
+      for (let k = 0; k < 4; k++) g.fillCircle(a.x + a.w - 54 + k * 10, y + 16, 5);
+    }
+
     this.add
-      .text(a.x + a.w / 2, a.y + a.h / 2, 'TYRES', {
+      .text(a.x + a.w / 2, a.y + a.h / 2 + 40, 'TYRES', {
         fontFamily: 'monospace',
         fontSize: '22px',
-        color: '#6d7a88',
+        color: '#7d8a98',
       })
       .setOrigin(0.5)
       .setDepth(1);
@@ -520,27 +1073,48 @@ class GameScene extends Phaser.Scene {
     });
 
     this.parked = [];
+    const shadows = this.add.graphics().setDepth(2);
+    const jitter = CFG.stallJitter;
+
     CFG.stallRows.forEach((row, rowIndex) => {
       const cy = row.y + CFG.stallH / 2;
       CFG.fields.forEach((field) => {
         const { n, start } = this.fieldSlots(field);
         for (let i = 0; i < n; i++) {
-          const x = start + i * CFG.stallW + CFG.stallW / 2;
-          if (this.inIsland(x, cy) || this.inCorral(x, cy)) continue;
-          if (Phaser.Math.Distance.Between(x, cy, CFG.moped.spawn.x, CFG.moped.spawn.y) < 90) {
+          const sx = start + i * CFG.stallW + CFG.stallW / 2;
+          if (this.inIsland(sx, cy) || this.inCorral(sx, cy)) continue;
+          if (this.nearPole(sx, cy)) continue; // a pole base owns that stall nose
+          if (this.isAccessAisle(sx, cy)) continue; // hatched, so nothing parks on it
+          if (Phaser.Math.Distance.Between(sx, cy, CFG.moped.spawn.x, CFG.moped.spawn.y) < 90) {
             continue; // keep the versus rider's start clear
           }
           if (Math.random() > CFG.parkedFill) continue;
+
+          // Nobody parks dead centre, and the nose-out rows sit back off
+          // the line rather than pulled up to it.
+          const x = sx + Phaser.Math.Between(-jitter.x, jitter.x);
+          const y = cy + Phaser.Math.Between(-jitter.y, jitter.y);
 
           // Body is the full texture rect, so nothing can be walked over.
           // Nose-out rows are flipped, not rotated: a static body reads its
           // extent from the rotated top-left corner, so an angled sprite
           // leaves its collision box offset from the car you can see.
           const car = this.scenery
-            .create(x, cy, Phaser.Utils.Array.GetRandom(BootScene.PARKED_KEYS))
+            .create(x, y, Phaser.Utils.Array.GetRandom(BootScene.PARKED_KEYS))
             .setDepth(3)
             .setFlipY(rowIndex % 2 === 1);
           car.refreshBody();
+
+          // What actually lifts a car off the asphalt: the shade under it,
+          // thrown the same way everything else on the site throws its own.
+          shadows.fillStyle(0x000000, 0.34);
+          shadows.fillRoundedRect(
+            x - car.width / 2 + 4,
+            y - car.height / 2 + 6,
+            car.width,
+            car.height,
+            7
+          );
           this.parked.push(car);
         }
       });
@@ -811,7 +1385,7 @@ class GameScene extends Phaser.Scene {
       const o = pad + i * doorW + 3;
       const r = horiz
         ? { x: face.x + o, y: face.y + 5, w: doorW - 6, h: face.h - 10 }
-        : { x: face.x + 5, y: face.y + o, w: face.h - 10, h: doorW - 6 };
+        : { x: face.x + 5, y: face.y + o, w: face.w - 10, h: doorW - 6 };
 
       g.fillStyle(0x2a3138, 1); // the lit box behind the glass
       g.fillRect(r.x, r.y, r.w, r.h);
@@ -1514,15 +2088,42 @@ class GameScene extends Phaser.Scene {
     const g = this.add.graphics().setDepth(1);
     this.carts = [];
 
+    const c = CFG.colors;
     CFG.corrals.forEach((def) => {
       const w = CFG.stallW * 3;
       const h = CFG.stallH - 16;
+      const x = def.x - w / 2;
+      const y = def.y - h / 2;
+
+      // The bay it stands in is painted out, and the steel throws a shadow
+      // on it the same way everything else on the lot does.
+      g.fillStyle(0x000000, 0.22);
+      g.fillRect(x + 4, y + 5, w, h);
       g.fillStyle(0xffe9a8, 0.12);
-      g.fillRect(def.x - w / 2, def.y - h / 2, w, h);
-      g.lineStyle(3, CFG.colors.corralRail, 0.9);
-      g.strokeRoundedRect(def.x - w / 2, def.y - h / 2, w, h, 6);
-      g.lineStyle(2, CFG.colors.corralRail, 0.35);
-      g.strokeRoundedRect(def.x - w / 2 + 7, def.y - h / 2 + 7, w - 14, h - 14, 4);
+      g.fillRect(x, y, w, h);
+      g.fillStyle(c.stallStripe, 0.3);
+      g.fillRect(x, y - 3, w, 3);
+
+      g.lineStyle(3, c.corralRail, 0.9);
+      g.strokeRoundedRect(x, y, w, h, 6);
+      g.lineStyle(2, c.corralRail, 0.35);
+      g.strokeRoundedRect(x + 7, y + 7, w - 14, h - 14, 4);
+
+      // Uprights at the corners and along the rails, and the sign over the
+      // open end telling you which end to push a train into.
+      [x, x + w / 2, x + w].forEach((px) => {
+        [y, y + h].forEach((py) => {
+          g.fillStyle(0x000000, 0.3);
+          g.fillCircle(px + 2, py + 3, 5);
+          g.fillStyle(c.corralRail, 0.95);
+          g.fillCircle(px, py, 5);
+        });
+      });
+      g.fillStyle(c.signBlue, 0.9);
+      g.fillRect(def.x - 26, y - 20, 52, 14);
+      g.fillStyle(0xd8e2ec, 0.8);
+      g.fillRect(def.x - 20, y - 16, 40, 3);
+      g.fillRect(def.x - 20, y - 11, 26, 3);
     });
 
     this.spawnCarts();

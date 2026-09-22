@@ -183,13 +183,20 @@ carrying. Only attendants collect — in versus the rider rides straight over th
 Modelled on a big-box warehouse store from the air. The world is 3400 x 2660px,
 several screens across.
 
-Along the north edge: the store itself, one long windowless box with roof
-skylights and HVAC packs, a red entry canopy over the west end of the storefront,
-a receiving yard of trailer docks behind the west wall, and a tyre-centre annex
-off the east end. The dock and the annex are outside the physics world — dressing
-you walk past, never into. The store itself you walk into, through either door;
-see [Inside the store](#inside-the-store) below. The storefront sidewalk runs the
-full paved width in front of it.
+Along the north edge: the store itself, one long windowless box — parapet,
+membrane roof welded down in rolls, rows of skylights over the sales floor,
+rooftop units on their curbs, drains and a roof hatch — with a red entry canopy
+over the west end of the storefront, a receiving yard of trailer docks behind the
+west wall, and a tyre-centre annex off the east end. The dock and the annex are
+outside the physics world — dressing you walk past, never into. The yard is a
+working one: painted bays with dock levellers and bumpers, trailers with their
+landing gear down, guard bollards along the apron, the compactor and baler, staged
+pallets, and a fence with a gate shutting it off from the parking. The store
+itself you walk into, through either door; see
+[Inside the store](#inside-the-store) below. The storefront sidewalk runs the
+full paved width in front of it, with guard bollards along the kerb across the
+glass, pallets of bagged stock under the canopy, the propane cage and a bench
+either side of the doors.
 
 Two pedestrian walkway spines run the depth of the lot, one either side of the
 entrance drive, striped with a crosswalk everywhere they meet a driving aisle.
@@ -206,9 +213,20 @@ ends by a landscaped planter, which is solid. Stalls within a bay of the doors a
 painted blue and left empty for shoppers.
 
 Lanes are 110px wide and stalls are 72 x 104. Parked cars are solid: you walk
-around them, squeeze between them, and they double as cover from traffic. Corrals
-sit in three-stall bays out in the rows, so every run is a trip across live
-traffic.
+around them, squeeze between them, and they double as cover from traffic. They
+come in five body styles in eight colours and nobody parks dead centre, so a row
+reads as a row of cars rather than one silhouette repeated. Corrals sit in
+three-stall bays out in the rows, so every run is a trip across live traffic.
+
+The lot is lit the way a real one is, off a grid of twin-head poles standing on
+the shared head line between each back-to-back stall pair — clear of the drive
+aisles, costing the nose of a stall rather than a whole one. Each pole's base is
+solid and each throws a pool of light, so where two of them meet the asphalt
+mottles and the rows read as lit rather than flat. The asphalt underneath is
+weathered: laid in passes with a cold joint between them, sealed in blocks,
+patched where the trenches went in, cracked, worn black down the wheel paths of
+every drive lane, and stained where cars sit all week. The accessible bays by the
+doors alternate with hatched access aisles that nothing parks on.
 
 Where a drive lane meets an aisle there is a signalled crossing (the small
 red/green dots) — fifteen of them. The signals are demand-actuated: aisles hold
