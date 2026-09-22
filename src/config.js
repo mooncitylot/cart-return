@@ -54,38 +54,104 @@ const CFG = {
   // footprint, so the interior floor is simply what's under the roof.
   // Walking through a door on the south wall (same x/w as `doors`) crosses
   // between this and the lot; see GameScene.constrainToZone().
+  //
+  // It is laid out the way a real warehouse club is, back to front:
+  //   190-206    perimeter wall
+  //   206-360    the refrigerated/service perimeter along the back wall
+  //   360-400    the back cross aisle
+  //   400-780    steel pallet racking, broken by a cross aisle at 570-610
+  //   800-870    the open "treasure hunt" floor: apparel and seasonal
+  //   870-915    the front cross aisle, feeding the registers
+  //   915-1005   the checkout lanes
+  //   1005-1075  the front strip the doors open onto
+  // with staff-only back-of-house (break room, receiving, food court)
+  // stacked down the west wall, behind the trailer yard outside.
   interior: {
     floor: { x1: 860, y1: 190, x2: 2940, y2: 1075 },
-    triggerMargin: 14, // how close to a door edge counts as "at it"
+    triggerMargin: 14,
+    wallT: 16, // perimeter wall, drawn inside the floor rect on N/E/W
 
-    // Just inside the doors: the new cart return, plus a few checkout
-    // counters — real stores put the corral and the checkout lanes in the
-    // same front strip, and it's what "checking out at the front" wants.
+    // Staff-only, down the west wall. The receiving floor backs onto the
+    // trailer yard outside, so its roll-up doors line up with the dock.
+    receiving: { x: 890, y: 450, w: 310, h: 380 },
+    foodCourt: { x: 890, y: 850, w: 310, h: 92 },
+
+    // The refrigerated and service perimeter. A warehouse club rings its
+    // sales floor with these rather than putting them in the racking:
+    // walk-in boxes you open a glass door into, open refrigerated cases,
+    // and a served counter. `kind` picks how one is drawn, `face` which
+    // side its doors/cases are on (the side shoppers stand).
+    departments: [
+      { label: 'BAKERY', kind: 'counter', x: 1210, y: 206, w: 330, h: 126, face: 'south' },
+      { label: 'MEAT', kind: 'case', x: 1550, y: 206, w: 330, h: 126, face: 'south' },
+      { label: 'DAIRY', kind: 'cooler', x: 1890, y: 206, w: 360, h: 126, face: 'south' },
+      { label: 'FROZEN', kind: 'freezer', x: 2260, y: 206, w: 340, h: 126, face: 'south' },
+      // `stock` overrides what shows through the glass, so a cooler of
+      // greens doesn't read the same as a cooler of milk.
+      { label: 'PRODUCE', kind: 'cooler', x: 2610, y: 206, w: 320, h: 126, face: 'south', stock: [0x5f8f56, 0x7aa35e, 0x4e7c4a, 0x93a84f] },
+      // and the beverage walk-in running down the east wall
+      { label: 'BEVERAGE', kind: 'cooler', x: 2800, y: 400, w: 124, h: 380, face: 'west', stock: [0x4a6f92, 0x6b8fa8, 0x3d5f7d, 0x7d94a6] },
+    ],
+
+    // Steel pallet racking: five double-sided runs down the sales floor,
+    // each broken in the middle by a cross aisle, with a walkable lane
+    // either side. The runs are columns of `aisleW` at these x's; each one
+    // is built from the bays below, so the cross aisle is a real gap in
+    // the shelving rather than a line painted on it.
+    aisleCols: [1350, 1650, 1950, 2250, 2550],
+    aisleW: 110,
+    aisleBays: [
+      { y: 400, h: 170 },
+      { y: 610, h: 170 },
+    ],
+    // The walkable lane centrelines either side of those racking runs —
+    // what interior shoppers actually walk up and down (see StorePed).
+    aisleLaneX: [1250, 1500, 1800, 2100, 2400, 2700],
+    aisleY: { top: 368, bottom: 886 },
+    // The rows a shopper is allowed to change lanes on: the back cross
+    // aisle, the mid-store cross aisle, and the front one feeding the
+    // registers. Every one of them is clear of every bay, which is what
+    // keeps StorePed's straight-leg routes out of the shelving.
+    crossRows: [368, 590, 886],
+
+    // The open floor between the racking and the front end, where a club
+    // puts apparel and seasonal stock on flat tables and pallet displays
+    // instead of racking. Kept on the racking's own grid so the lanes run
+    // clear from the back wall all the way to the registers.
+    frontTables: [
+      { x: 1330, y: 800, w: 150, h: 56, kind: 'apparel' },
+      { x: 1630, y: 800, w: 150, h: 56, kind: 'pallet' },
+      { x: 1930, y: 800, w: 150, h: 56, kind: 'apparel' },
+      { x: 2230, y: 800, w: 150, h: 56, kind: 'pallet' },
+      { x: 2530, y: 800, w: 150, h: 56, kind: 'apparel' },
+      { x: 2770, y: 800, w: 120, h: 56, kind: 'pallet' },
+    ],
+
+    // Just inside the doors: the cart return, plus the front end proper.
     vestibule: {
       // West of every register, clear of the checkout lanes entirely — a
       // full train shouldn't have to thread the belts to hand carts over.
       dropZone: { x: 1150, y: 980, w: 300, h: 62 },
+      // A row of registers across the whole front, with the gaps where
+      // the two doorways land — nobody puts a belt in front of a door.
       checkout: [
-        { x: 1560, y: 930 },
-        { x: 1855, y: 930 },
-        { x: 2150, y: 930 },
+        { x: 1360, y: 990 },
+        { x: 1530, y: 990 },
+        { x: 1855, y: 990 },
+        { x: 2180, y: 990 },
+        { x: 2355, y: 990 },
+        { x: 2530, y: 990 },
+        { x: 2705, y: 990 },
+        { x: 2880, y: 990 },
       ],
+      // Nested carts waiting for members, parked in the two dead corners
+      // of the front strip so they never foul the run to the cart return.
+      cartStaging: [
+        { x: 882, y: 1014, rows: 2 },
+        { x: 2660, y: 1014, rows: 2 },
+      ],
+      receiptCheck: { x: 2160, y: 1044 }, // the podium beside the exit door
     },
-
-    // Shelf units further back, laid out as columns with a walkable lane
-    // either side of each one — interior shoppers walk the lane axis, "up
-    // and down the aisles". x/y is the top-left corner, like `islands`.
-    aisles: [
-      { x: 1350, y: 430, w: 110, h: 380 },
-      { x: 1650, y: 430, w: 110, h: 380 },
-      { x: 1950, y: 430, w: 110, h: 380 },
-      { x: 2250, y: 430, w: 110, h: 380 },
-      { x: 2550, y: 430, w: 110, h: 380 },
-    ],
-    // The walkable lane centrelines either side of those shelf columns —
-    // what interior shoppers actually walk up and down (see StorePed).
-    aisleLaneX: [1250, 1500, 1800, 2100, 2400, 2700],
-    aisleY: { top: 400, bottom: 860 },
 
     // A walled-off staff room in the back corner, with a doorway gap on its
     // south wall. This is where an attendant now spawns and respawns, and
@@ -349,10 +415,13 @@ const CFG = {
 
     // The store interior reads as a completely different place from the lot
     // outside: a bright, light-floored warehouse club instead of dim
-    // asphalt, with orange steel racking instead of dark shelving.
-    interiorFloor: 0xcdd2d8,
-    interiorFloorJoint: 0xb2b8c0,
+    // asphalt, with orange steel racking instead of dark shelving. The
+    // floor is polished concrete, so it is a mid grey that the overhead
+    // lighting pools on rather than a flat white slab.
+    interiorFloor: 0xc3c9d1,
+    interiorFloorJoint: 0xa9b1ba,
     interiorWall: 0x8d95a2,
+    interiorWallFace: 0x9ea6b2, // the painted inner face of the perimeter wall
     breakRoomFloor: 0xb7bec5,
     shelfFrame: 0xdd7a2e,
     shelfFrameLit: 0xf2a25b, // top-lit face of the racking, for a rolled-steel highlight
@@ -361,5 +430,24 @@ const CFG = {
     // Palette the stacked pallets on a shelf are picked from at random —
     // assorted packaged goods, not one flat slab of colour.
     boxPalette: [0x5c6c78, 0x7a6a4a, 0x6a4a48, 0x4a6a58, 0x685a76, 0x7a7262],
+
+    // The refrigerated perimeter. Walk-in boxes are insulated panel with a
+    // run of glass doors across the face; the freezer is the same thing in
+    // a colder colour, frosted rather than clear.
+    coolerBox: 0x9fb0bb,
+    coolerGlass: 0xaddbe6,
+    freezerBox: 0x94a8bd,
+    freezerGlass: 0xcfe6f2,
+    coolerFrame: 0x6d818c,
+    deptCounter: 0x7d8895, // served counters: bakery, deli
+    deptCase: 0x394048, // open refrigerated cases, dark inside
+    // Fixtures out on the floor.
+    palletWood: 0x9a7b4f,
+    tableTop: 0x6f6257, // the flat apparel tables
+    floorStripe: 0xcdaa43, // yellow safety striping
+    // Overhead: the roof structure and the light rows hanging off it, seen
+    // from below. Kept faint — it sits above the players, not on them.
+    joist: 0x7c8794,
+    lightFixture: 0xfff2cf,
   },
 };

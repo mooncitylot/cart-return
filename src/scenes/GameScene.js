@@ -549,61 +549,391 @@ class GameScene extends Phaser.Scene {
 
   // ---------- the store interior ----------
 
-  // The inside of the store: floor, aisle shelving, the vestibule (cart
-  // return + checkout), and the break room. Built once, alongside every
-  // other build*() call in create() — nothing in here moves. It lives in
-  // the same world coordinates as the store box drawn over it
-  // (CFG.interior.floor sits inside CFG.store), so it needs no camera or
-  // world-bounds changes; visibility is handled separately, by hiding that
-  // box per camera — see syncRoofVisibility().
+  // The inside of the store, laid out the way a warehouse club is: a
+  // refrigerated and served perimeter along the back wall, steel pallet
+  // racking down the middle broken by a cross aisle, an open apparel and
+  // seasonal floor in front of that, then the front end — registers, the
+  // cart return and the strip the doors open onto — with staff-only
+  // back-of-house down the west wall behind the trailer yard outside.
+  //
+  // Built once, alongside every other build*() call in create() — nothing
+  // in here moves. It lives in the same world coordinates as the store box
+  // drawn over it (CFG.interior.floor sits inside CFG.store), so it needs no
+  // camera or world-bounds changes; visibility is handled separately, by
+  // hiding that box per camera — see syncRoofVisibility().
   buildInterior() {
-    const f = CFG.interior.floor;
-    const c = CFG.colors;
     const g = this.add.graphics().setDepth(0);
 
-    // A bright, light-floored warehouse club — deliberately nothing like the
-    // dim asphalt outside. Expansion joints break the slab up so it doesn't
-    // read as one flat rectangle.
-    g.fillStyle(c.interiorFloor, 1);
-    g.fillRect(f.x1, f.y1, f.x2 - f.x1, f.y2 - f.y1);
-    g.lineStyle(2, c.interiorFloorJoint, 0.5);
-    for (let x = f.x1; x <= f.x2; x += 220) g.lineBetween(x, f.y1, x, f.y2);
-    for (let y = f.y1; y <= f.y2; y += 220) g.lineBetween(f.x1, y, f.x2, y);
-
+    this.drawInteriorFloor(g);
+    this.drawInteriorShell(g);
+    this.buildDepartments(g);
     this.buildAisles(g);
+    this.buildFrontFloor(g);
+    this.buildBackOfHouse(g);
     this.buildVestibule(g);
     this.buildBreakRoom(g);
+    this.buildInteriorOverhead();
   }
 
-  // Shelf units, laid out as columns with a walkable lane either side —
-  // solid, so a player (and a cart train) has to actually thread the aisles
-  // rather than cut through the shelving. Orange steel racking (lit uprights,
-  // a beam per shelf level with its own shadow) over individually-coloured
-  // pallets, the way a real warehouse club's high-bay storage reads — flat
-  // blocks of a single colour read as paint, not goods on a shelf.
+  // Registers a solid rectangle of interior fixture with the scenery group:
+  // racking, walk-in boxes, counters, merchandise tables. Everyone walks
+  // around these, nobody through them.
+  blockZone(r) {
+    const zone = this.add.zone(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h);
+    this.physics.add.existing(zone, true);
+    this.scenery.add(zone);
+  }
+
+  interiorLabel(x, y, text, size, color, depth = 2) {
+    return this.add
+      .text(x, y, text, { fontFamily: 'monospace', fontSize: `${size}px`, color })
+      .setOrigin(0.5)
+      .setDepth(depth);
+  }
+
+  // Polished concrete, not a flat slab. Saw-cut control joints on the
+  // slab's own grid, the long reflected streak each run of roof lights
+  // lays down the length of the floor, yellow striping along the two cross
+  // aisles, and the pallet-jack scuffing that collects on them.
+  drawInteriorFloor(g) {
+    const f = CFG.interior.floor;
+    const c = CFG.colors;
+    const w = f.x2 - f.x1;
+    const h = f.y2 - f.y1;
+
+    g.fillStyle(c.interiorFloor, 1);
+    g.fillRect(f.x1, f.y1, w, h);
+
+    g.lineStyle(2, c.interiorFloorJoint, 0.4);
+    for (let x = f.x1 + 80; x < f.x2; x += 160) g.lineBetween(x, f.y1, x, f.y2);
+    for (let y = f.y1 + 90; y < f.y2; y += 160) g.lineBetween(f.x1, y, f.x2, y);
+
+    // Reflections. A buffed slab throws the light rows back as a broad soft
+    // streak with a hard bright core, which is most of what stops a big
+    // grey floor reading as one flat fill.
+    CFG.interior.aisleLaneX.forEach((x) => {
+      g.fillStyle(0xffffff, 0.045);
+      g.fillRect(x - 48, f.y1 + 24, 96, h - 48);
+      g.fillStyle(0xffffff, 0.06);
+      g.fillRect(x - 15, f.y1 + 24, 30, h - 48);
+    });
+
+    // Yellow striping down both cross aisles, and the scuff marks the
+    // pallet jacks leave turning onto them.
+    [CFG.interior.crossRows[0] + 4, CFG.interior.crossRows[2] + 6].forEach((y) => {
+      g.fillStyle(c.floorStripe, 0.35);
+      g.fillRect(f.x1 + 340, y, w - 400, 4);
+    });
+    g.lineStyle(3, 0x000000, 0.08);
+    for (let i = 0; i < 26; i++) {
+      const x = f.x1 + 260 + ((i * 397) % (w - 360));
+      const y = f.y1 + 60 + ((i * 271) % (h - 160));
+      g.lineBetween(x, y, x + 24 + (i % 5) * 7, y + ((i % 3) - 1) * 9);
+    }
+  }
+
+  // The shell: a painted block perimeter wall on the three closed sides —
+  // the south side is the storefront, and already has its own face — with
+  // the dock's roll-up doors let into the west one, lined up with the
+  // trailers backed onto them outside. Nothing here needs a collision
+  // zone: constrainToZone() clamps players inside the wall's inner face.
+  drawInteriorShell(g) {
+    const f = CFG.interior.floor;
+    const c = CFG.colors;
+    const t = CFG.interior.wallT;
+    const w = f.x2 - f.x1;
+    const h = f.y2 - f.y1;
+
+    g.fillStyle(c.interiorWall, 1);
+    g.fillRect(f.x1, f.y1, w, t);
+    g.fillRect(f.x1, f.y1, t, h);
+    g.fillRect(f.x2 - t, f.y1, t, h);
+
+    // Block coursing, then a lighter cap along the inner face so the wall
+    // reads as standing up off the floor rather than painted onto it.
+    g.fillStyle(0x000000, 0.1);
+    for (let x = f.x1; x < f.x2; x += 48) g.fillRect(x, f.y1, 2, t);
+    for (let y = f.y1; y < f.y2; y += 48) {
+      g.fillRect(f.x1, y, t, 2);
+      g.fillRect(f.x2 - t, y, t, 2);
+    }
+    g.fillStyle(c.interiorWallFace, 1);
+    g.fillRect(f.x1, f.y1 + t - 3, w, 3);
+    g.fillRect(f.x1 + t - 3, f.y1 + t, 3, h - t);
+    g.fillRect(f.x2 - t, f.y1 + t, 3, h - t);
+
+    // The shade a wall that tall drops onto the slab beside it. Cheap, and
+    // it is most of what stops the floor meeting the wall as a flat seam.
+    // Each pass is anchored on the wall and a little shorter than the last,
+    // so the alpha stacks up against it and falls away across the slab.
+    g.fillStyle(0x000000, 0.04);
+    for (let i = 6; i > 0; i--) {
+      const band = i * 5;
+      g.fillRect(f.x1 + t, f.y1 + t, w - t * 2, band);
+      g.fillRect(f.x1 + t, f.y1 + t, band, h - t);
+      g.fillRect(f.x2 - t - band, f.y1 + t, band, h - t);
+    }
+
+    // Roll-up dock doors, on the same spacing as the trailer bays outside.
+    const d = CFG.dock;
+    for (let y = d.y + 40; y < d.y + d.h - 200; y += 132) {
+      g.fillStyle(0x2f353d, 1);
+      g.fillRect(f.x1, y, t, 86);
+      g.fillStyle(0x59626d, 0.9);
+      for (let yy = y + 6; yy < y + 82; yy += 11) g.fillRect(f.x1 + 2, yy, t - 4, 5);
+    }
+  }
+
+  // ---------- the refrigerated / served perimeter ----------
+
+  // A warehouse club rings its sales floor with refrigeration rather than
+  // putting it in the racking: walk-in boxes you open a glass door into,
+  // open refrigerated cases, and a served counter. Each one is a solid
+  // block with its trade face — the side shoppers stand at — on the side
+  // `face` names.
+  buildDepartments(g) {
+    CFG.interior.departments.forEach((d) => {
+      this.drawDepartment(g, d);
+      this.blockZone(d);
+    });
+  }
+
+  drawDepartment(g, d) {
+    const c = CFG.colors;
+    const horiz = d.face !== 'west';
+    const cold = d.kind === 'cooler' || d.kind === 'freezer';
+    const shell =
+      d.kind === 'freezer' ? c.freezerBox : d.kind === 'cooler' ? c.coolerBox : c.deptCounter;
+
+    g.fillStyle(0x000000, 0.2); // grounds the box against the slab
+    g.fillRect(d.x + 7, d.y + 7, d.w, d.h);
+    g.fillStyle(shell, 1);
+    g.fillRect(d.x, d.y, d.w, d.h);
+    g.fillStyle(0xffffff, 0.08);
+    g.fillRect(d.x, d.y, d.w, 5); // the lit top edge of the parapet
+
+    // The trade face — the side shoppers stand at — runs either across the
+    // block (a back-wall department) or down it (the east-wall beverage
+    // run); the rest of the block is what is going on behind it.
+    const faceT = 34;
+    const face = horiz
+      ? { x: d.x, y: d.y + d.h - faceT, w: d.w, h: faceT }
+      : { x: d.x, y: d.y, w: faceT, h: d.h };
+    const back = horiz
+      ? { x: d.x, y: d.y + 5, w: d.w, h: d.h - faceT - 5 }
+      : { x: d.x + faceT, y: d.y + 5, w: d.w - faceT, h: d.h - 5 };
+
+    if (cold) this.drawWalkInRoof(g, back);
+    else if (d.kind === 'counter') this.drawBakeryFloor(g, back);
+    else this.drawCuttingRoom(g, back);
+
+    // The face stands proud of the block, so it throws a line of shade
+    // back across whatever is behind it.
+    g.fillStyle(0x000000, 0.22);
+    if (horiz) g.fillRect(face.x, face.y - 5, face.w, 5);
+    else g.fillRect(face.x + face.w, face.y, 5, face.h);
+
+    if (d.kind === 'counter') this.drawServedCounter(g, d, face);
+    else if (d.kind === 'case') this.drawOpenCase(g, d, face);
+    else this.drawCoolerDoors(g, d, face, horiz);
+  }
+
+  // The roof of a walk-in box: insulated panel joints, and the condenser
+  // plant standing on it. From above that plant is most of what a walk-in
+  // actually is, and it keeps the box from reading as a painted slab.
+  drawWalkInRoof(g, r) {
+    g.lineStyle(2, 0x000000, 0.1);
+    for (let x = r.x + 44; x < r.x + r.w - 6; x += 44) g.lineBetween(x, r.y, x, r.y + r.h);
+    for (let y = r.y + 44; y < r.y + r.h - 6; y += 44) g.lineBetween(r.x, y, r.x + r.w, y);
+
+    for (let x = r.x + 20; x < r.x + r.w - 54; x += 150) {
+      for (let y = r.y + 16; y < r.y + r.h - 32; y += 130) {
+        g.fillStyle(0x000000, 0.18);
+        g.fillRect(x + 3, y + 3, 54, 30);
+        g.fillStyle(0x6f7a86, 1);
+        g.fillRect(x, y, 54, 30);
+        g.fillStyle(0x3a424b, 1);
+        g.fillCircle(x + 16, y + 15, 10);
+        g.fillCircle(x + 38, y + 15, 10);
+        g.fillStyle(0x99a3ad, 0.55);
+        g.fillCircle(x + 16, y + 15, 3);
+        g.fillCircle(x + 38, y + 15, 3);
+      }
+    }
+  }
+
+  // Behind a served counter: the production floor a bakery is actually
+  // mostly made of — a bank of ovens and the rack trolleys feeding them.
+  drawBakeryFloor(g, r) {
+    g.fillStyle(0x6b7681, 1);
+    g.fillRect(r.x, r.y, r.w, r.h);
+    for (let x = r.x + 18; x < r.x + r.w - 56; x += 64) {
+      g.fillStyle(0x30363d, 1);
+      g.fillRect(x, r.y + 6, 46, r.h - 30);
+      g.fillStyle(0xc98f3f, 0.75);
+      g.fillRect(x + 5, r.y + 12, 36, 6);
+      g.fillRect(x + 5, r.y + 24, 36, 6);
+    }
+    g.fillStyle(0xb9c2cb, 1);
+    for (let x = r.x + 44; x < r.x + r.w - 30; x += 64) g.fillRect(x, r.y + r.h - 20, 26, 15);
+  }
+
+  // Behind an open case: the cutting room, stainless benches and blocks.
+  drawCuttingRoom(g, r) {
+    g.fillStyle(0x767f8a, 1);
+    g.fillRect(r.x, r.y, r.w, r.h);
+    for (let x = r.x + 20; x < r.x + r.w - 44; x += 80) {
+      g.fillStyle(0xb9c2cb, 1);
+      g.fillRect(x, r.y + 10, 58, 22);
+      g.fillStyle(0x000000, 0.14);
+      g.fillRect(x, r.y + 28, 58, 4);
+      g.fillStyle(0x8a6a44, 1);
+      g.fillRect(x + 14, r.y + r.h - 22, 30, 15);
+    }
+  }
+
+  // A run of glass doors across the face of a walk-in box, product showing
+  // through them. The freezer's glass is frosted, so it reads colder and
+  // gives less away than the cooler's.
+  drawCoolerDoors(g, d, face, horiz) {
+    const c = CFG.colors;
+    const frozen = d.kind === 'freezer';
+    const glass = frozen ? c.freezerGlass : c.coolerGlass;
+    const span = horiz ? face.w : face.h;
+    const doorW = 54;
+    const n = Math.max(1, Math.floor((span - 16) / doorW));
+    const pad = (span - n * doorW) / 2;
+
+    g.fillStyle(c.coolerFrame, 1);
+    g.fillRect(face.x, face.y, face.w, face.h);
+
+    for (let i = 0; i < n; i++) {
+      const o = pad + i * doorW + 3;
+      const r = horiz
+        ? { x: face.x + o, y: face.y + 5, w: doorW - 6, h: face.h - 10 }
+        : { x: face.x + 5, y: face.y + o, w: face.h - 10, h: doorW - 6 };
+
+      g.fillStyle(0x2a3138, 1); // the lit box behind the glass
+      g.fillRect(r.x, r.y, r.w, r.h);
+      // Stock on the shelves inside, seen through the door.
+      const stock = d.stock || c.boxPalette;
+      g.fillStyle(stock[(i + (frozen ? 3 : 0)) % stock.length], 0.85);
+      if (horiz) {
+        for (let y = r.y + 3; y < r.y + r.h - 3; y += 8) g.fillRect(r.x + 2, y, r.w - 4, 5);
+      } else {
+        for (let x = r.x + 3; x < r.x + r.w - 3; x += 8) g.fillRect(x, r.y + 2, 5, r.h - 4);
+      }
+      g.fillStyle(glass, frozen ? 0.62 : 0.32); // the pane itself
+      g.fillRect(r.x, r.y, r.w, r.h);
+      g.fillStyle(0xffffff, 0.22); // and the highlight raking down it
+      if (horiz) g.fillRect(r.x + 3, r.y + 3, r.w - 6, 4);
+      else g.fillRect(r.x + 3, r.y + 3, 4, r.h - 6);
+      g.lineStyle(2, c.coolerFrame, 1);
+      g.strokeRect(r.x, r.y, r.w, r.h);
+      g.fillStyle(0xd8dee6, 1); // handle
+      if (horiz) g.fillRect(r.x + r.w - 6, r.y + r.h / 2 - 7, 3, 14);
+      else g.fillRect(r.x + r.w / 2 - 7, r.y + r.h - 6, 14, 3);
+    }
+  }
+
+  // An open refrigerated case: a dark well of product behind a stainless
+  // rim, the way meat and deli are merchandised.
+  drawOpenCase(g, d, face) {
+    const c = CFG.colors;
+    g.fillStyle(c.deptCase, 1);
+    g.fillRect(face.x, face.y, face.w, face.h);
+
+    const tray = [0xa8524f, 0xb4645c, 0x8f4744, 0xc07a6e];
+    for (let x = face.x + 6; x < face.x + face.w - 10; x += 26) {
+      g.fillStyle(tray[((x / 26) | 0) % tray.length], 0.9);
+      g.fillRect(x, face.y + 9, 20, face.h - 20);
+      g.fillStyle(0xffffff, 0.14);
+      g.fillRect(x, face.y + 9, 20, 4);
+    }
+    g.fillStyle(0xbcc5cf, 1); // stainless rim, top and front
+    g.fillRect(face.x, face.y, face.w, 5);
+    g.fillRect(face.x, face.y + face.h - 4, face.w, 4);
+  }
+
+  // A served counter: worktop, a glass display case of product, and the
+  // member of staff standing behind it.
+  drawServedCounter(g, d, face) {
+    const c = CFG.colors;
+    g.fillStyle(0x5f6a76, 1);
+    g.fillRect(face.x, face.y, face.w, face.h);
+    g.fillStyle(0x8e99a5, 1);
+    g.fillRect(face.x, face.y + face.h - 7, face.w, 7); // worktop lip
+
+    const goods = [0xc9a45f, 0xd8b877, 0xb08149, 0xe0cb9a];
+    for (let x = face.x + 10; x < face.x + face.w - 14; x += 22) {
+      g.fillStyle(goods[((x / 22) | 0) % goods.length], 1);
+      g.fillRect(x, face.y + 8, 16, face.h - 22);
+    }
+    g.fillStyle(c.doorGlass, 0.28); // the case glass over it
+    g.fillRect(face.x + 4, face.y + 5, face.w - 8, face.h - 16);
+
+    this.add
+      .image(d.x + d.w / 2, face.y - 16, 'employee')
+      .setDepth(6)
+      .setRotation(Math.PI / 2);
+  }
+
+  // ---------- racking ----------
+
+  // Steel pallet racking: five double-sided runs down the sales floor with
+  // a walkable lane either side, each broken in the middle by a cross aisle
+  // so the floor is not one unbroken wall of shelving from the back wall to
+  // the front. Solid, so a player (and a cart train) has to thread the
+  // lanes rather than cut through.
   buildAisles(g) {
+    const { aisleCols, aisleW, aisleBays } = CFG.interior;
     const beamStep = 76;
-    CFG.interior.aisles.forEach((a, ai) => {
-      // Grounds the unit: a soft shadow it casts onto the floor, offset
-      // toward the bottom-right so it peeks out past the shelf drawn over it.
-      g.fillStyle(0x000000, 0.16);
-      g.fillRect(a.x + 5, a.y + 5, a.w, a.h);
 
-      this.buildShelfBay(g, a, ai, beamStep);
+    aisleCols.forEach((x, ci) => {
+      aisleBays.forEach((bay, bi) => {
+        const a = { x, y: bay.y, w: aisleW, h: bay.h };
+        // Grounds the unit: a soft shadow it casts onto the floor, offset
+        // toward the bottom-right so it peeks out past the shelf over it.
+        g.fillStyle(0x000000, 0.16);
+        g.fillRect(a.x + 5, a.y + 5, a.w, a.h);
 
-      const zone = this.add.zone(a.x + a.w / 2, a.y + a.h / 2, a.w, a.h);
-      this.physics.add.existing(zone, true);
-      this.scenery.add(zone);
+        this.buildShelfBay(g, a, ci * aisleBays.length + bi, beamStep);
+        this.drawRackGuards(g, a);
+        this.blockZone(a);
+      });
+    });
+  }
+
+  // Yellow guard posts at the four corners of a run, bolted to the slab to
+  // keep pallet jacks off the uprights. Small, and drawn rather than
+  // blocking — but they are what the end of a warehouse aisle looks like,
+  // and they give the lanes a repeating punctuation the bare slab lacks.
+  drawRackGuards(g, a) {
+    [
+      [a.x + 6, a.y - 9],
+      [a.x + a.w - 6, a.y - 9],
+      [a.x + 6, a.y + a.h + 9],
+      [a.x + a.w - 6, a.y + a.h + 9],
+    ].forEach(([x, y]) => {
+      g.fillStyle(0x000000, 0.22);
+      g.fillCircle(x + 2, y + 2, 6);
+      g.fillStyle(CFG.colors.floorStripe, 1);
+      g.fillCircle(x, y, 6);
+      g.fillStyle(0xffffff, 0.3);
+      g.fillCircle(x - 2, y - 2, 2);
     });
   }
 
   // One shelf unit's contents and racking. Broken out of buildAisles() so
   // the per-level loop (pallets, then the beam and its cast shadow) reads on
-  // its own.
+  // its own. Orange steel frame (lit uprights, a beam per level with its own
+  // shadow) over individually-coloured pallets, the way a real club's
+  // high-bay storage reads — flat blocks of a single colour read as paint,
+  // not goods on a shelf.
   buildShelfBay(g, a, ai, beamStep) {
     const c = CFG.colors;
     const pal = c.boxPalette;
-    const levels = Math.floor(a.h / beamStep);
+    const levels = Math.max(1, Math.floor(a.h / beamStep));
     const cols = 2;
     const colW = (a.w - 12) / cols;
 
@@ -628,6 +958,8 @@ class GameScene extends Phaser.Scene {
           bx + colW * 0.38,
           ly + lh * 0.55
         );
+        g.fillStyle(c.palletWood, 0.85); // the pallet the load sits on
+        g.fillRect(bx + 1, ly + lh - 6, colW - 2, 3);
         g.fillStyle(0x000000, 0.18);
         g.fillRect(bx + 1, ly + lh - 3, colW - 2, 3); // undershadow, tucked under the beam above
       }
@@ -672,21 +1004,251 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  // Just inside the doors: a row of real checkout lanes (interior shoppers
-  // queue here) and the new cart return — see drawInteriorDropZone().
-  buildVestibule(g) {
-    CFG.interior.vestibule.checkout.forEach((c, i) => this.buildCheckoutLane(g, c, i + 1));
-    this.drawInteriorDropZone();
+  // ---------- the open floor in front of the racking ----------
+
+  // Between the racking and the front end a club merchandises off the
+  // floor rather than out of shelving: flat tables of folded apparel and
+  // shrink-wrapped pallet displays of whatever is in season. Kept on the
+  // racking's own grid, so every lane still runs clear from the back wall
+  // to the registers.
+  buildFrontFloor(g) {
+    CFG.interior.frontTables.forEach((t, i) => {
+      g.fillStyle(0x000000, 0.14);
+      g.fillRect(t.x + 4, t.y + 4, t.w, t.h);
+      if (t.kind === 'apparel') this.drawApparelTable(g, t, i);
+      else this.drawPalletDisplay(g, t, i);
+      this.blockZone(t);
+    });
   }
 
-  // One checkout lane: a belt feeding down from the aisles, low rails either
-  // side to queue shoppers into it, a counter with a register and a bagging
-  // shelf, and an overhead lane number — the pieces a real front-end lane is
-  // built from, in place of the old bare rectangle.
+  drawApparelTable(g, t, i) {
+    const c = CFG.colors;
+    g.fillStyle(c.tableTop, 1);
+    g.fillRoundedRect(t.x, t.y, t.w, t.h, 5);
+    g.fillStyle(0xffffff, 0.06);
+    g.fillRect(t.x + 3, t.y + 3, t.w - 6, 3);
+
+    // Folded stacks laid out across it, each catching a little light.
+    const cloth = [0x4c6f8f, 0x8a5560, 0x5f7a5c, 0x7a6f4f, 0x6a5a78, 0x53707a];
+    const cols = Math.floor((t.w - 10) / 28);
+    const rows = Math.floor((t.h - 10) / 19);
+    for (let cx = 0; cx < cols; cx++) {
+      for (let ry = 0; ry < rows; ry++) {
+        const col = cloth[(i * 3 + cx * 2 + ry * 5) % cloth.length];
+        const x = t.x + 7 + cx * 28;
+        const y = t.y + 7 + ry * 19;
+        g.fillStyle(col, 1);
+        g.fillRect(x, y, 24, 16);
+        g.fillStyle(0xffffff, 0.13);
+        g.fillRect(x, y, 24, 4);
+        g.fillStyle(0x000000, 0.2);
+        g.fillRect(x, y + 13, 24, 3);
+      }
+    }
+  }
+
+  drawPalletDisplay(g, t, i) {
+    const c = CFG.colors;
+    g.fillStyle(c.palletWood, 1); // the pallet, showing round the load
+    g.fillRect(t.x, t.y, t.w, t.h);
+    g.fillStyle(0x000000, 0.25);
+    for (let x = t.x + 8; x < t.x + t.w - 4; x += 16) g.fillRect(x, t.y, 3, t.h);
+
+    const pal = c.boxPalette;
+    const bx = t.x + 6;
+    const by = t.y + 6;
+    const bw = t.w - 12;
+    const bh = t.h - 12;
+    const cols = 3;
+    const cw = bw / cols;
+    for (let n = 0; n < cols; n++) {
+      g.fillStyle(pal[(i * 2 + n) % pal.length], 1);
+      g.fillRect(bx + n * cw + 1, by, cw - 2, bh);
+      g.fillStyle(0x000000, 0.22);
+      g.fillRect(bx + n * cw + cw - 2, by, 2, bh);
+    }
+    // Shrink wrap over the whole load, and the hard highlight off it.
+    g.fillStyle(0xffffff, 0.08);
+    g.fillRect(bx, by, bw, bh);
+    g.fillStyle(0xffffff, 0.16);
+    g.fillRect(bx, by + 4, bw, 4);
+  }
+
+  // ---------- back of house ----------
+
+  // Down the west wall, behind the trailer yard outside: the receiving
+  // floor the docks unload onto, and the food court fronting the registers.
+  // Receiving is a marked-out floor with pallets staged on it rather than a
+  // sealed room — which is how a club actually uses the space, and it
+  // leaves the break-room doorway a clear run out onto the sales floor.
+  buildBackOfHouse(g) {
+    const r = CFG.interior.receiving;
+    this.hatchArea(g, r);
+    this.interiorLabel(r.x + r.w / 2, r.y + 14, 'RECEIVING', 12, '#8d7b3f');
+
+    // Two ranks of staged pallets with an aisle between them, lined up with
+    // the break-room doorway so nothing ever corks it.
+    const rankW = 100;
+    [
+      { x: r.x + 10, y: r.y + 34 },
+      { x: r.x + r.w - rankW - 10, y: r.y + 34 },
+      { x: r.x + 10, y: r.y + 200 },
+      { x: r.x + r.w - rankW - 10, y: r.y + 200 },
+    ].forEach((p, i) => {
+      const t = { x: p.x, y: p.y, w: rankW, h: 106 };
+      g.fillStyle(0x000000, 0.16);
+      g.fillRect(t.x + 4, t.y + 4, t.w, t.h);
+      this.drawPalletDisplay(g, t, i + 3);
+      this.blockZone(t);
+    });
+
+    this.buildFoodCourt(g);
+  }
+
+  buildFoodCourt(g) {
+    const fc = CFG.interior.foodCourt;
+    const c = CFG.colors;
+
+    // The servery: a counter with a menu board behind it and hot-hold wells
+    // sunk into the top.
+    const counter = { x: fc.x, y: fc.y, w: fc.w, h: 30 };
+    g.fillStyle(c.signRed, 1);
+    g.fillRect(counter.x, counter.y - 12, counter.w, 12); // menu board
+    g.fillStyle(0x6a7482, 1);
+    g.fillRect(counter.x, counter.y, counter.w, counter.h);
+    g.fillStyle(0x9aa4b0, 1);
+    g.fillRect(counter.x, counter.y + counter.h - 6, counter.w, 6);
+    g.fillStyle(0x2d333a, 1);
+    for (let x = counter.x + 14; x < counter.x + counter.w - 24; x += 46) {
+      g.fillRect(x, counter.y + 7, 32, 14);
+    }
+    this.blockZone(counter);
+    this.interiorLabel(fc.x + fc.w / 2, fc.y - 6, 'FOOD COURT', 11, '#e8d6cf');
+
+    // Stand-up tables in front of it, on their own little tiled patch.
+    g.fillStyle(0xb9c0c8, 0.5);
+    g.fillRect(fc.x, fc.y + counter.h + 6, fc.w, fc.h - counter.h - 6);
+    for (let i = 0; i < 3; i++) {
+      const x = fc.x + 56 + i * 100;
+      const y = fc.y + fc.h - 24;
+      g.fillStyle(0x000000, 0.16);
+      g.fillCircle(x + 3, y + 3, 17);
+      g.fillStyle(0x7d8794, 1);
+      g.fillCircle(x, y, 17);
+      g.fillStyle(0xffffff, 0.1);
+      g.fillCircle(x - 4, y - 4, 8);
+    }
+  }
+
+  // A floor-marked working area: a yellow bounding stripe with diagonal
+  // hatching inside it, the way a warehouse marks out ground a pallet jack
+  // owns. Purely paint — nothing here blocks anybody.
+  hatchArea(g, r) {
+    const c = CFG.colors;
+    g.lineStyle(3, c.floorStripe, 0.5);
+    g.strokeRect(r.x, r.y, r.w, r.h);
+    g.lineStyle(2, c.floorStripe, 0.14);
+    for (let i = -r.h; i < r.w; i += 30) {
+      const t0 = Math.max(0, -i);
+      const t1 = Math.min(r.h, r.w - i);
+      if (t1 <= t0) continue;
+      g.lineBetween(r.x + i + t0, r.y + t0, r.x + i + t1, r.y + t1);
+    }
+  }
+
+  // ---------- the front end ----------
+
+  // Everything the doors open onto: the entrance flooring, the row of
+  // registers across the front, the cart return, the nested carts waiting
+  // for members and the receipt-check podium beside the exit.
+  buildVestibule(g) {
+    const v = CFG.interior.vestibule;
+    this.drawFrontStrip(g);
+    v.checkout.forEach((c, i) => this.buildCheckoutLane(g, c, i + 1));
+    this.drawInteriorDropZone();
+    v.cartStaging.forEach((s) => this.drawCartStaging(g, s));
+    this.drawReceiptCheck(g, v.receiptCheck);
+  }
+
+  // The strip between the registers and the doors: tiled rather than bare
+  // slab, the way the entrance run of a warehouse is, with walk-off matting
+  // inside each doorway and a stripe keeping it clear of the lanes.
+  drawFrontStrip(g) {
+    const f = CFG.interior.floor;
+    const c = CFG.colors;
+    const t = CFG.interior.wallT;
+    const y = 1008;
+
+    g.fillStyle(0xb5bdc6, 1);
+    g.fillRect(f.x1 + t, y, f.x2 - f.x1 - t * 2, f.y2 - y);
+    g.lineStyle(1, 0x9ba3ad, 0.55);
+    for (let x = f.x1 + t; x < f.x2 - t; x += 34) g.lineBetween(x, y, x, f.y2);
+    for (let yy = y + 34; yy < f.y2; yy += 34) g.lineBetween(f.x1 + t, yy, f.x2 - t, yy);
+    g.fillStyle(c.floorStripe, 0.3);
+    g.fillRect(f.x1 + t + 30, y - 4, f.x2 - f.x1 - t * 2 - 60, 3);
+
+    CFG.doors.forEach((d) => {
+      g.fillStyle(0x333940, 1);
+      g.fillRect(d.x - d.w / 2, f.y2 - 56, d.w, 42);
+      g.fillStyle(0x3d444c, 1);
+      for (let x = d.x - d.w / 2 + 4; x < d.x + d.w / 2 - 4; x += 12) {
+        g.fillRect(x, f.y2 - 52, 6, 34);
+      }
+    });
+
+    this.drawStorefrontFromInside(g);
+  }
+
+  // The storefront, seen from the side nobody in the lot sees: a solid
+  // wall with the two doorways let into it, jambs and all. Without it the
+  // floor simply stops at the bottom of the screen and the inside of the
+  // store reads as open to the weather. It needs no collision — the clamp
+  // in constrainToZone() stops players at its inner face, and the doorway
+  // gaps are the same x/w the lot side uses, so the two line up.
+  drawStorefrontFromInside(g) {
+    const f = CFG.interior.floor;
+    const c = CFG.colors;
+    const t = 10;
+    const y = f.y2 - t;
+
+    const segs = [];
+    let cursor = f.x1;
+    CFG.doors.forEach((d) => {
+      segs.push([cursor, d.x - d.w / 2]);
+      cursor = d.x + d.w / 2;
+    });
+    segs.push([cursor, f.x2]);
+
+    segs.forEach(([a, b]) => {
+      if (b <= a) return;
+      g.fillStyle(c.interiorWall, 1);
+      g.fillRect(a, y, b - a, t);
+      g.fillStyle(c.interiorWallFace, 1);
+      g.fillRect(a, y, b - a, 3);
+      g.fillStyle(0x000000, 0.1);
+      for (let x = a; x < b; x += 48) g.fillRect(x, y, 2, t);
+    });
+
+    // Jambs either side of each doorway.
+    g.fillStyle(0x2c333b, 1);
+    CFG.doors.forEach((d) => {
+      g.fillRect(d.x - d.w / 2 - 4, y - 3, 5, t + 3);
+      g.fillRect(d.x + d.w / 2 - 1, y - 3, 5, t + 3);
+    });
+  }
+
+  // One checkout lane: a belt feeding down from the sales floor, low rails
+  // either side to queue shoppers into it, a counter with a register, card
+  // terminal and bagging shelf, and an overhead lane number — the pieces a
+  // real front-end lane is built from. Solid, so the front end is a wall of
+  // registers with a walkway behind it rather than open floor.
   buildCheckoutLane(g, c, num) {
     const laneW = 74;
     const beltH = 66;
     const beltY = c.y - beltH - 6;
+
+    g.fillStyle(0x000000, 0.15);
+    g.fillRect(c.x - laneW / 2 + 3, beltY + 4, laneW, beltH + 46);
 
     g.fillStyle(0x30353c, 1);
     [c.x - laneW / 2, c.x + laneW / 2].forEach((x) => g.fillRect(x - 3, beltY, 6, beltH + 34));
@@ -697,6 +1259,8 @@ class GameScene extends Phaser.Scene {
     for (let y = beltY + 6; y < beltY + beltH - 4; y += 12) {
       g.fillRect(c.x - laneW / 2 + 10, y, laneW - 20, 5); // belt tread
     }
+    g.fillStyle(0xd8dee6, 0.7); // the divider bar, parked at the head of the belt
+    g.fillRect(c.x - laneW / 2 + 12, beltY + 4, laneW - 24, 4);
 
     g.fillStyle(0x454c56, 1);
     g.fillRect(c.x - 45, c.y - 14, 90, 28); // worktop
@@ -706,23 +1270,128 @@ class GameScene extends Phaser.Scene {
     g.fillRect(c.x - 40, c.y - 10, 20, 20); // register housing
     g.fillStyle(CFG.colors.doorGlass, 0.85);
     g.fillRect(c.x - 37, c.y - 7, 14, 10); // screen glow
+    g.fillStyle(0x30353c, 1);
+    g.fillRect(c.x - 14, c.y - 8, 12, 14); // card terminal on its post
     g.fillStyle(0x39424c, 1);
     g.fillRect(c.x + 18, c.y - 10, 24, 20); // bagging shelf
 
+    this.blockZone({
+      x: c.x - laneW / 2 - 3,
+      y: beltY,
+      w: laneW + 6,
+      h: c.y + 16 - beltY,
+    });
+
     g.fillStyle(CFG.colors.signBlue, 1);
     g.fillRoundedRect(c.x - 14, beltY - 24, 28, 18, 3);
-    this.add
-      .text(c.x, beltY - 15, String(num), {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color: '#e8eef5',
-      })
-      .setOrigin(0.5)
-      .setDepth(2);
+    this.interiorLabel(c.x, beltY - 15, String(num), 13, '#e8eef5');
 
     // The cashier: stood behind the register, facing back up the belt
     // toward the aisles the way an actual one watches for the next customer.
     this.add.image(c.x - 26, c.y + 26, 'employee').setDepth(6).setRotation(-Math.PI / 2);
+  }
+
+  // Nested carts waiting for members. Drawn, not built out of real cart
+  // objects: these are the store's stock, not the lot's, and an attendant
+  // should not be able to peel one off the rank and hand it back in.
+  drawCartStaging(g, s) {
+    const w = 118;
+    for (let r = 0; r < s.rows; r++) {
+      const y = s.y + r * 28;
+      g.fillStyle(0x000000, 0.14);
+      g.fillRect(s.x + 3, y + 3, w, 20);
+      g.fillStyle(0x8a9099, 1);
+      g.fillRect(s.x, y, w, 20);
+      g.fillStyle(CFG.colors.signRed, 0.8);
+      g.fillRect(s.x, y, w, 5);
+      g.lineStyle(1, 0x5d646d, 0.9);
+      for (let x = s.x + 8; x < s.x + w - 4; x += 9) g.lineBetween(x, y + 6, x, y + 19);
+    }
+  }
+
+  // The podium beside the exit door where a receipt gets its marker line.
+  drawReceiptCheck(g, p) {
+    g.fillStyle(0x000000, 0.16);
+    g.fillRect(p.x - 15, p.y - 9, 34, 22);
+    g.fillStyle(0x4a535e, 1);
+    g.fillRect(p.x - 18, p.y - 12, 34, 22);
+    g.fillStyle(0x9aa4b0, 1);
+    g.fillRect(p.x - 18, p.y - 12, 34, 5);
+    this.add.image(p.x + 6, p.y + 2, 'employee').setDepth(6).setRotation(Math.PI);
+  }
+
+  // ---------- overhead ----------
+
+  // Everything above head height, on its own layer: over the players
+  // (depth 8) but under the roof the lot sees (depth 15), so it shows from
+  // inside and only from inside. Exposed roof structure, the high-bay
+  // light rows hung off it, numbered aisle markers and department banners.
+  // It is what gives the floor a ceiling — without it the interior reads
+  // as a plan drawing rather than a room.
+  buildInteriorOverhead() {
+    const f = CFG.interior.floor;
+    const c = CFG.colors;
+    const t = CFG.interior.wallT;
+    const g = this.add.graphics().setDepth(10);
+    const x1 = f.x1 + t;
+    const x2 = f.x2 - t;
+
+    // Bar joists across the box, on the deeper trusses that carry them.
+    g.fillStyle(c.joist, 0.07);
+    for (let y = f.y1 + 30; y < f.y2 - 60; y += 58) g.fillRect(x1, y, x2 - x1, 2);
+    g.fillStyle(c.joist, 0.08);
+    for (let x = x1 + 130; x < x2; x += 265) g.fillRect(x, f.y1 + t, 4, f.y2 - f.y1 - t - 70);
+
+    // A run of high-bay fixtures down every lane, each with the soft pool
+    // of light it throws. The slab under them is already carrying the
+    // reflection — see drawInteriorFloor().
+    CFG.interior.aisleLaneX.forEach((x) => {
+      for (let y = 396; y < f.y2 - 140; y += 118) {
+        g.fillStyle(0xffffff, 0.05);
+        g.fillRect(x - 14, y - 6, 28, 48);
+        g.fillStyle(c.lightFixture, 0.45);
+        g.fillRect(x - 7, y, 14, 36);
+        g.fillStyle(0xffffff, 0.7);
+        g.fillRect(x - 3, y + 4, 6, 28);
+      }
+    });
+
+    // The structural columns the roof sits on, seen from directly below.
+    // They stand inside the racking runs and the walk-in boxes, the way a
+    // warehouse plans them — nowhere anybody walks, so they cost no
+    // collision, and they tie the racking to the roof above it.
+    g.fillStyle(0x2b3038, 0.5);
+    CFG.interior.aisleCols.forEach((x) => {
+      CFG.interior.aisleBays.forEach((bay) => {
+        const cx = x + CFG.interior.aisleW / 2;
+        const cy = bay.y + bay.h / 2;
+        g.fillRect(cx - 11, cy - 11, 22, 22);
+        g.fillStyle(0xffffff, 0.1);
+        g.fillRect(cx - 11, cy - 11, 22, 4);
+        g.fillStyle(0x2b3038, 0.5);
+      });
+    });
+
+    // A club signs its ceiling, not its floor: a numbered marker hung over
+    // the head of every lane, and a banner over every department.
+    CFG.interior.aisleLaneX.forEach((x, i) => {
+      this.hangingSign(x, CFG.interior.crossRows[0], String(i + 1), 15, c.signBlue, 34);
+    });
+    CFG.interior.departments.forEach((d) => {
+      this.hangingSign(d.x + d.w / 2, d.y + d.h - 48, d.label, 13, c.signRed);
+    });
+  }
+
+  // One sign hung off the roof structure, drawn over everyone's heads.
+  hangingSign(x, y, text, size, color, w) {
+    const width = w || text.length * 10 + 18;
+    const h = size + 11;
+    this.add.rectangle(x + 3, y + 5, width, h, 0x000000, 0.22).setDepth(11);
+    this.add
+      .rectangle(x, y, width, h, color, 0.95)
+      .setStrokeStyle(2, 0xe8eef5, 0.45)
+      .setDepth(12);
+    this.interiorLabel(x, y, text, size, '#f0f5fa', 13);
   }
 
   // The staff break room: a walled-off room with a hinged door on its south
@@ -735,14 +1404,44 @@ class GameScene extends Phaser.Scene {
   buildBreakRoom(g) {
     const b = CFG.interior.breakRoom;
     const c = CFG.colors;
+    // Vinyl tile rather than the sales floor's bare slab, which is what
+    // actually changes underfoot when you step off the warehouse floor.
     g.fillStyle(c.breakRoomFloor, 1);
     g.fillRect(b.x, b.y, b.w, b.h);
+    g.lineStyle(1, 0x9aa2aa, 0.35);
+    for (let x = b.x + 30; x < b.x + b.w; x += 30) g.lineBetween(x, b.y, x, b.y + b.h);
+    for (let y = b.y + 30; y < b.y + b.h; y += 30) g.lineBetween(b.x, y, b.x + b.w, y);
 
-    // table + four chairs, dead centre
-    const cx = b.x + b.w / 2;
-    const cy = b.y + b.h / 2 - 10;
+    // Lockers along the north wall, then the vending machines and the
+    // counter with the urn on it — the whole of a real staff room.
+    g.fillStyle(0x4d5866, 1);
+    g.fillRect(b.x + 8, b.y + 6, 132, 26);
+    g.fillStyle(0x2f363f, 1);
+    for (let x = b.x + 14; x < b.x + 134; x += 22) g.fillRect(x, b.y + 10, 18, 18);
+    g.fillStyle(0x8f98a3, 0.7);
+    for (let x = b.x + 14; x < b.x + 134; x += 22) g.fillRect(x + 13, b.y + 17, 3, 5);
+
+    [0x8a3f3a, 0x35617f].forEach((col, i) => {
+      const x = b.x + 156 + i * 60;
+      g.fillStyle(0x000000, 0.16);
+      g.fillRect(x + 3, b.y + 9, 52, 30);
+      g.fillStyle(col, 1);
+      g.fillRect(x, b.y + 6, 52, 30);
+      g.fillStyle(0x1a1e24, 1);
+      g.fillRect(x + 5, b.y + 11, 30, 20);
+      g.fillStyle(0xffffff, 0.12);
+      g.fillRect(x + 5, b.y + 11, 30, 5);
+    });
+
+    // table + four chairs, off centre, with the counter down the east wall
+    const cx = b.x + b.w / 2 - 26;
+    const cy = b.y + b.h / 2 + 22;
+    g.fillStyle(0x000000, 0.14);
+    g.fillRoundedRect(cx - 37, cy - 21, 80, 48, 8);
     g.fillStyle(0x5a4632, 1);
     g.fillRoundedRect(cx - 40, cy - 24, 80, 48, 8);
+    g.fillStyle(0xffffff, 0.07);
+    g.fillRoundedRect(cx - 40, cy - 24, 80, 12, 6);
     g.fillStyle(0x394048, 1);
     [
       [-55, -20],
@@ -751,14 +1450,18 @@ class GameScene extends Phaser.Scene {
       [55, 20],
     ].forEach(([dx, dy]) => g.fillCircle(cx + dx, cy + dy, 10));
 
-    this.add
-      .text(cx, b.y + 16, 'BREAK ROOM', {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color: '#4a5560',
-      })
-      .setOrigin(0.5)
-      .setDepth(2);
+    g.fillStyle(0x7c8592, 1);
+    g.fillRect(b.x + b.w - 34, b.y + 62, 30, 110); // counter down the east wall
+    g.fillStyle(0x9aa4b0, 1);
+    g.fillRect(b.x + b.w - 34, b.y + 62, 6, 110);
+    g.fillStyle(0x2f363f, 1);
+    g.fillRect(b.x + b.w - 26, b.y + 74, 16, 20); // the urn
+    g.fillStyle(0xd8dee6, 1);
+    g.fillRect(b.x + b.w - 24, b.y + 112, 12, 14); // and the microwave
+    g.fillStyle(0x1a1e24, 1);
+    g.fillRect(b.x + b.w - 22, b.y + 115, 8, 8);
+
+    this.interiorLabel(b.x + 68, b.y + 50, 'BREAK ROOM', 13, '#5b6672');
 
     // Walls, minus the doorway gap on the south side — drawn solid, at the
     // same thickness the zones below use, with a lighter cap along the
@@ -1777,8 +2480,12 @@ class GameScene extends Phaser.Scene {
         this.exitStore(p);
         return;
       }
-      p.sprite.x = Phaser.Math.Clamp(p.x, f.x1 + 10, f.x2 - 10);
-      p.sprite.y = Phaser.Math.Clamp(p.y, f.y1 + 10, f.y2 - 10);
+      // The interior has a real perimeter wall on three sides now, so the
+      // clamp stops at its inner face. The south side is the storefront,
+      // which is where the doors are, so it keeps the bare floor edge.
+      const t = CFG.interior.wallT;
+      p.sprite.x = Phaser.Math.Clamp(p.x, f.x1 + t + 10, f.x2 - t - 10);
+      p.sprite.y = Phaser.Math.Clamp(p.y, f.y1 + t + 10, f.y2 - 10);
     } else {
       if (p.canPushCarts && p.y <= CFG.sidewalk.y + margin && this.inDoorX(p.x)) {
         this.enterStore(p);

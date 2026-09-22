@@ -224,16 +224,30 @@ you never see it from the lot. In two-player, one attendant can be inside
 while the other works the lot; the split screen shows each of you the right
 thing.
 
-Just past the doors is the **vestibule** — checkout counters, and the new
-**CART RETURN**, which moved in off the sidewalk. Push a full train through
-either door and hand it over there, same as the old outdoor drop zone worked.
-Further back are the **aisles**, shelving you have to walk around, with
-shoppers pushing carts up and down them and drifting through checkout —
-cosmetic company, not part of the corral/restock economy outside. Tucked in
-a back corner is the **break room** — table, chairs, and a doorway off the
-main floor.
+It is laid out the way a warehouse club is, back to front:
 
-The break room is where you start the shift, and where you come back to after
+| Band | What's there |
+| --- | --- |
+| Back wall | The refrigerated and served perimeter: a **bakery** with its ovens behind the counter, a **meat** case backing onto the cutting room, and walk-in **dairy**, **frozen** and **produce** boxes with glass doors and condenser plant on their roofs. A **beverage** walk-in runs down the east wall. |
+| Back cross aisle | Striped, with the numbered aisle markers hung over it. |
+| Sales floor | Five double-sided runs of orange **pallet racking**, each broken in the middle by a cross aisle, guard posts on every corner, with a walkable lane either side. |
+| Front floor | The open **apparel and seasonal** floor: flat tables of folded stock and shrink-wrapped pallet displays. |
+| Front end | Eight **checkout lanes** across the width — belt, register, card terminal, bagging shelf, cashier — with gaps where the two doorways land, and the **CART RETURN** west of the lot of them. |
+| Front strip | Tiled, with matting inside each doorway, nested carts waiting in both corners and the receipt-check podium beside the exit. |
+| West wall | Staff-only back-of-house behind the trailer yard outside: the **break room**, the marked-out **receiving** floor with its roll-up dock doors and staged pallets, and the **food court**. |
+
+Push a full train through either door and hand it over at the cart return,
+same as the old outdoor drop zone worked. Shoppers walk the lanes with carts
+and queue at the registers — cosmetic company, not part of the corral/restock
+economy outside; they cross between lanes only on one of the three cross
+aisles, so they never walk through the racking.
+
+Above all of it, on a layer over everyone's heads, are the roof joists, the
+high-bay light rows the polished slab reflects back, the aisle numbers and the
+department banners.
+
+The break room — lockers, vending machines, a table and the coffee counter —
+is where you start the shift, and where you come back to after
 losing a life. Walk in and it tops you back up to three lives, so long as
 you're not already there and it isn't on cooldown (about 50 seconds between
 uses) — so a life lost right outside the vestibule isn't the same setback as
