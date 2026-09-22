@@ -558,10 +558,17 @@ class GameScene extends Phaser.Scene {
   // box per camera — see syncRoofVisibility().
   buildInterior() {
     const f = CFG.interior.floor;
+    const c = CFG.colors;
     const g = this.add.graphics().setDepth(0);
 
-    g.fillStyle(0x3a4048, 1);
+    // A bright, light-floored warehouse club — deliberately nothing like the
+    // dim asphalt outside. Expansion joints break the slab up so it doesn't
+    // read as one flat rectangle.
+    g.fillStyle(c.interiorFloor, 1);
     g.fillRect(f.x1, f.y1, f.x2 - f.x1, f.y2 - f.y1);
+    g.lineStyle(2, c.interiorFloorJoint, 0.5);
+    for (let x = f.x1; x <= f.x2; x += 220) g.lineBetween(x, f.y1, x, f.y2);
+    for (let y = f.y1; y <= f.y2; y += 220) g.lineBetween(f.x1, y, f.x2, y);
 
     this.buildAisles(g);
     this.buildVestibule(g);
@@ -570,14 +577,20 @@ class GameScene extends Phaser.Scene {
 
   // Shelf units, laid out as columns with a walkable lane either side —
   // solid, so a player (and a cart train) has to actually thread the aisles
-  // rather than cut through the shelving.
+  // rather than cut through the shelving. Orange steel racking (uprights and
+  // a beam per shelf level) over dark shrink-wrapped pallets, the way a real
+  // warehouse club's high-bay storage reads.
   buildAisles(g) {
+    const c = CFG.colors;
     CFG.interior.aisles.forEach((a) => {
-      g.fillStyle(0x333941, 1);
+      g.fillStyle(c.shelfSlat, 1);
       g.fillRect(a.x, a.y, a.w, a.h);
-      g.fillStyle(0x20242a, 0.6);
-      for (let y = a.y + 20; y < a.y + a.h - 10; y += 40) {
-        g.fillRect(a.x + 6, y, a.w - 12, 4); // shelf slats
+
+      g.fillStyle(c.shelfFrame, 1);
+      g.fillRect(a.x, a.y, 6, a.h); // uprights
+      g.fillRect(a.x + a.w - 6, a.y, 6, a.h);
+      for (let y = a.y; y < a.y + a.h; y += 76) {
+        g.fillRect(a.x, y, a.w, 6); // beam, one per shelf level
       }
 
       const zone = this.add.zone(a.x + a.w / 2, a.y + a.h / 2, a.w, a.h);
@@ -645,7 +658,7 @@ class GameScene extends Phaser.Scene {
   buildBreakRoom(g) {
     const b = CFG.interior.breakRoom;
     const c = CFG.colors;
-    g.fillStyle(0x2b3038, 1);
+    g.fillStyle(c.breakRoomFloor, 1);
     g.fillRect(b.x, b.y, b.w, b.h);
 
     // table + four chairs, dead centre
@@ -665,7 +678,7 @@ class GameScene extends Phaser.Scene {
       .text(cx, b.y + 16, 'BREAK ROOM', {
         fontFamily: 'monospace',
         fontSize: '13px',
-        color: '#8a97a6',
+        color: '#4a5560',
       })
       .setOrigin(0.5)
       .setDepth(2);
@@ -688,7 +701,7 @@ class GameScene extends Phaser.Scene {
     ];
     walls.forEach((w) => {
       if (w.w <= 0 || w.h <= 0) return;
-      g.fillStyle(c.storeTrim, 1);
+      g.fillStyle(c.interiorWall, 1);
       g.fillRect(w.x, w.y, w.w, w.h);
       g.fillStyle(c.wallTrim, 0.5);
       g.fillRect(w.x, w.y, w.w, 2);

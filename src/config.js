@@ -344,5 +344,15 @@ const CFG = {
     tree: 0x3f6b46,
     signBlue: 0x2c5f9e,
     signRed: 0xa8413a,
+
+    // The store interior reads as a completely different place from the lot
+    // outside: a bright, light-floored warehouse club instead of dim
+    // asphalt, with orange steel racking instead of dark shelving.
+    interiorFloor: 0xcdd2d8,
+    interiorFloorJoint: 0xb2b8c0,
+    interiorWall: 0x8d95a2,
+    breakRoomFloor: 0xb7bec5,
+    shelfFrame: 0xdd7a2e,
+    shelfSlat: 0x2b2f35,
   },
 };
