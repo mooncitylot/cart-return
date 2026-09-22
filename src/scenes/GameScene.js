@@ -41,6 +41,7 @@ class GameScene extends Phaser.Scene {
     this.buildInterior();
     this.buildDoors();
     this.buildCorrals();
+    this.buildForklift();
     this.buildTraffic();
     this.buildPeds();
     this.createPlayers();
@@ -2260,6 +2261,15 @@ class GameScene extends Phaser.Scene {
       g.strokeCircle(ob.x, ob.y, 30);
     });
 
+    // The forklift, whenever it is out on the asphalt — parked somewhere
+    // you left it, or under somebody right now. Amber, and square, so it
+    // never reads as a cart or a badge.
+    const f = this.forklift;
+    if (f && (f.rider ? f.rider.zone === 'lot' : f.zone === 'lot')) {
+      g.fillStyle(0xf2b338, 1);
+      g.fillRect(f.sprite.x - 34, f.sprite.y - 34, 68, 68);
+    }
+
     this.players.forEach((p) => {
       if (!p.alive || p.zone !== 'lot') return;
       g.fillStyle(0x0e1116, 1);
@@ -2598,6 +2608,7 @@ class GameScene extends Phaser.Scene {
     ped.cart = null;
     ped.fetching = null;
     ped.pauseUntil = 0;
+    ped.downUntil = 0; // flattened by the forklift; see flattenPed()
     ped.stuck = 0;
     ped.stuckAt = -99;
     this.retarget(ped);
@@ -3006,14 +3017,20 @@ class GameScene extends Phaser.Scene {
 
   createPlayers() {
     const cursors = this.input.keyboard.createCursorKeys();
-    const wasd = this.input.keyboard.addKeys('W,A,S,D');
+    const wasd = this.input.keyboard.addKeys('W,A,S,D,E');
+    const enter = this.input.keyboard.addKey('ENTER');
+    // `use` is the get-on/get-off key for the forklift, and it belongs to
+    // the key set rather than the player: solo answers to both sets, so
+    // either key works, while co-op hands each player the one that falls
+    // under the hand already steering.
     const arrowSet = {
       up: cursors.up,
       down: cursors.down,
       left: cursors.left,
       right: cursors.right,
+      use: enter,
     };
-    const wasdSet = { up: wasd.W, down: wasd.S, left: wasd.A, right: wasd.D };
+    const wasdSet = { up: wasd.W, down: wasd.S, left: wasd.A, right: wasd.D, use: wasd.E };
 
     // Touch devices get a stick per player: bottom left is always player one,
     // bottom right the second player, which lines up with the split screen.
@@ -3048,8 +3065,8 @@ class GameScene extends Phaser.Scene {
     };
     this.input.keyboard.on('keydown-R', restart);
     this.input.keyboard.on('keydown-M', menu);
-    // Same two on-screen, for the devices the sticks are there for.
-    TouchControls.setActions({ restart, menu });
+    // Same on-screen, for the devices the sticks are there for.
+    TouchControls.setActions({ restart, menu, use: () => this.touchUse() });
     // A scene swap mid-push would otherwise leave a stick stuck over.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => TouchControls.reset());
   }
@@ -3183,10 +3200,11 @@ class GameScene extends Phaser.Scene {
 
   tryPickup(p, now) {
     if (p.train.length >= p.maxTrain(now)) return;
+    const reach = p.pickupRadius();
     const cart = this.carts.find(
       (c) =>
         c.state === 'idle' &&
-        Phaser.Math.Distance.Between(c.sprite.x, c.sprite.y, p.x, p.y) < 30
+        Phaser.Math.Distance.Between(c.sprite.x, c.sprite.y, p.x, p.y) < reach
     );
     if (!cart) return;
 
@@ -3263,6 +3281,9 @@ class GameScene extends Phaser.Scene {
   buildObstacles() {
     this.obstacles = [];
     CFG.obstacles.kinds.forEach((def) => {
+      // Kinds the heat meter owns are not on the rota: updateHeat() puts
+      // them out and takes them back in, so the shift starts without them.
+      if (def.spawnedBy) return;
       const n = Math.min(def.max, def.count + (this.level - 1) * def.perLevel);
       for (let i = 0; i < n; i++) this.spawnObstacle(def.key);
     });
@@ -3283,8 +3304,10 @@ class GameScene extends Phaser.Scene {
     return null;
   }
 
-  spawnObstacle(key) {
-    const spot = this.obstacleSpot();
+  // `at` places one somewhere specific — the storefront doors, for a guard
+  // the front office has just sent out.
+  spawnObstacle(key, at) {
+    const spot = at || this.obstacleSpot();
     if (!spot) return null;
     const ob = Obstacle.create(this, key, spot.x, spot.y);
     if (ob) this.obstacles.push(ob);
@@ -3303,7 +3326,11 @@ class GameScene extends Phaser.Scene {
   // Did anything living catch this attendant? A shield bounces a coworker off
   // without breaking — it takes a motor to burn one of those.
   resolveObstacles(p, now) {
-    const ob = this.obstacles.find((o) => o.catches(p));
+    // Anything that doesn't stand in front of a forklift has already been
+    // run over by forkliftHazards() by the time this runs.
+    const ob = this.obstacles.find(
+      (o) => o.catches(p) && (!p.forklift || o.stopsVehicles())
+    );
     if (!ob) return false;
 
     if (p.hasEffect('shield', now)) {
@@ -3311,7 +3338,8 @@ class GameScene extends Phaser.Scene {
       this.banner(p.x, p.y, 'BOUNCED', Powerup.def('shield').text);
       return true;
     }
-    this.shovedBy(p, ob, now);
+    // The kind decides what it costs: a coworker shoves, security arrests.
+    ob.punish(p, now);
     ob.landedHit(now);
     return true;
   }
@@ -3395,6 +3423,229 @@ class GameScene extends Phaser.Scene {
     this.banner(p.x, p.y, pu.def.label, pu.def.text);
     this.powerups = this.powerups.filter((q) => q !== pu);
     pu.destroy();
+    this.publish();
+  }
+
+  // ---------- the stolen forklift ----------
+
+  // The forklift itself lives in src/forklift.js; everything the scene has
+  // to say about it is here. It is one machine, shared: in co-op whoever
+  // gets to it first has it, and in versus it is the attendant's answer to
+  // a moped that has been running them down all shift.
+
+  buildForklift() {
+    this.forklift = new Forklift(this, CFG.forklift.spawn);
+  }
+
+  // Which storefront door is nearest a given x. Security posts on one when
+  // the driver they want has gone inside, where they have no body to follow.
+  nearestDoor(x) {
+    return CFG.doors.reduce((best, d) => (Math.abs(d.x - x) < Math.abs(best.x - x) ? d : best));
+  }
+
+  // The use key: get on if you are standing next to it, get off if you are
+  // on it. Nothing here ever forces somebody off — being hauled off is
+  // security's job, not a keypress.
+  useForklift(p, now) {
+    const f = this.forklift;
+    if (!p.alive || !p.canPushCarts || now < p.stunUntil) return;
+
+    if (p.forklift) {
+      f.dismount();
+      this.banner(p.x, p.y, 'STEPPED OFF', '#8a97a6');
+      this.publish();
+      return;
+    }
+    if (!f.reachableBy(p)) return;
+
+    f.mount(p);
+    // The first one off the dock is the theft. Getting back on afterwards
+    // is just getting back on — the heat it earned is already yours.
+    if (!f.stolen) {
+      f.stolen = true;
+      p.score += CFG.score.forkliftTheft;
+      this.addHeat(p, CFG.forklift.heat.theft, now);
+      this.banner(p.x, p.y, `+${CFG.score.forkliftTheft} FORKLIFT`, '#f2c85c');
+    } else {
+      this.banner(p.x, p.y, 'FORKLIFT', '#f2c85c');
+    }
+    this.publish();
+  }
+
+  // Touch has one use button rather than a key per player, so it goes to
+  // whoever it could plausibly mean: the rider first, then anybody standing
+  // close enough to climb on.
+  touchUse() {
+    const p =
+      this.players.find((a) => a.forklift) ||
+      this.players.find((a) => this.forklift.reachableBy(a));
+    if (p) this.useForklift(p, this.time.now);
+  }
+
+  // Everything three tonnes of steel touches while somebody is driving it.
+  // Bodies go on the floor and the meter goes up; carts are left alone,
+  // because sweeping those up is what the thing is for.
+  forkliftHazards(p, now) {
+    if (now < p.stunUntil) return;
+    const r = CFG.forklift.hitRadius;
+
+    // Inside, the only people in the way are the cosmetic shoppers — and
+    // running one down in front of the registers is worth the same as
+    // doing it out on the asphalt, and reported just as fast.
+    if (p.zone === 'interior') {
+      this.interiorPeds.forEach((sp) => {
+        if (now < sp.downUntil || Phaser.Math.Distance.Between(sp.x, sp.y, p.x, p.y) > r) {
+          return;
+        }
+        sp.flatten(p.x, p.y, now);
+        this.ranDown(p, 'SHOPPER', now);
+      });
+      return;
+    }
+
+    let hitPed = null;
+    this.peds.children.iterate((ped) => {
+      if (!ped || ped.leaving || hitPed) return;
+      if (now < (ped.downUntil || 0)) return;
+      if (Phaser.Math.Distance.Between(ped.x, ped.y, p.x, p.y) < r) hitPed = ped;
+    });
+    if (hitPed) {
+      this.flattenPed(hitPed, p, now);
+      this.ranDown(p, 'SHOPPER', now);
+    }
+
+    // Staff on the lot. Security is the exception: they are the one thing
+    // out here that stands in front of it, so resolveObstacles() gets them.
+    const ob = this.obstacles.find(
+      (o) =>
+        !o.stopsVehicles() &&
+        now >= o.stunUntil &&
+        Phaser.Math.Distance.Between(o.x, o.y, p.x, p.y) < r
+    );
+    if (ob) {
+      ob.recoil(p.x, p.y, ob.def.knockback * 2, CFG.forklift.downMs);
+      this.ranDown(p, ob.def.label, now);
+    }
+
+    // And whoever else is out here with you. In versus that is the moped
+    // that has spent the shift running you down, and it spills like it
+    // spills off anything else; in co-op it is the partner you are racing,
+    // and it costs them exactly what a car would.
+    this.players.forEach((o) => {
+      if (o === p || !o.alive || o.zone !== 'lot') return;
+      if (now < o.invulnUntil) return;
+      if (o.canPushCarts && o.spawnSafe) return; // nobody is farmed at a respawn
+      if (Phaser.Math.Distance.Between(o.x, o.y, p.x, p.y) > r) return;
+      if (this.absorbHit(o, now)) return;
+
+      this.ranDown(p, o.label, now);
+      if (o.canPushCarts) this.runOver(o, now);
+      else o.spinOut(now, CFG.moped.stunOnCrash);
+    });
+  }
+
+  // A shopper the forks caught: cart gone, thrown clear, and down long
+  // enough that you feel it. They pick a fresh errand when they get up.
+  flattenPed(ped, by, now) {
+    this.dropPedCart(ped);
+    this.shove(ped, by);
+    ped.body.setVelocity(0, 0);
+    ped.route = null;
+    ped.downUntil = now + CFG.forklift.downMs;
+    ped.pauseUntil = ped.downUntil;
+    this.tweens.add({
+      targets: ped,
+      alpha: 0.35,
+      yoyo: true,
+      duration: CFG.forklift.downMs / 2,
+    });
+  }
+
+  // One body, whoever it belonged to: points now, and a meter that somebody
+  // in the front office is watching.
+  ranDown(p, label, now) {
+    p.score += CFG.score.flatten;
+    this.addHeat(p, CFG.forklift.heat.perPerson, now);
+    this.banner(p.x, p.y, `+${CFG.score.flatten} ${label}`, '#f2c85c');
+    this.publish();
+  }
+
+  // Clipped by live traffic. The car loses that one: the forklift stalls and
+  // the driver is thrown about for a moment, but the train stays on the
+  // forks and nobody loses a life — which is most of why it is worth taking.
+  forkliftCrash(p, now) {
+    p.stunUntil = now + CFG.forklift.stallMs;
+    p.invulnUntil = now + CFG.forklift.stallMs + CFG.moped.crashImmuneMs;
+    p.forklift.stall();
+    this.addHeat(p, CFG.forklift.heat.perCrash, now);
+    this.flash(0xd9a441);
+    this.banner(p.x, p.y, 'STALLED', '#e6c06a');
+    this.publish();
+  }
+
+  // ---------- heat ----------
+
+  addHeat(p, points, now) {
+    const h = CFG.forklift.heat;
+    p.heat = Phaser.Math.Clamp(p.heat + points, 0, h.max);
+    p.calmAt = now + h.calmMs;
+  }
+
+  // The meter rounded up into stars, which is all the HUD and the guard
+  // count ever read off it.
+  stars(p) {
+    const h = CFG.forklift.heat;
+    return Math.min(h.stars, Math.ceil(p.heat / (h.max / h.stars)));
+  }
+
+  coolOff(p) {
+    p.heat = 0;
+    p.calmAt = 0;
+  }
+
+  // The meter sheds once you have been quiet for a moment, and the detail on
+  // the lot is topped up and stood back down to match the worst star rating
+  // anybody is currently carrying. Dumping the forklift and behaving is a
+  // real escape: give it long enough and they walk back inside.
+  updateHeat(now, dt) {
+    const h = CFG.forklift.heat;
+    let worst = 0;
+    this.players.forEach((p) => {
+      if (now > p.calmAt) p.heat = Math.max(0, p.heat - h.decay * dt);
+      worst = Math.max(worst, this.stars(p));
+    });
+
+    const def = Obstacle.def('security');
+    const want = Phaser.Math.Clamp(worst - h.guardsFromStar, 0, def.max);
+    const detail = this.obstacles.filter((o) => o.key === 'security');
+
+    // They come out of the storefront doors, which is where they would.
+    for (let i = detail.length; i < want; i++) {
+      this.spawnObstacle('security', this.doorPoint(i % CFG.doors.length));
+    }
+
+    const surplus = detail.slice(want);
+    if (surplus.length) {
+      if (want === 0) this.banner(surplus[0].x, surplus[0].y, 'HEAT OFF', '#8fc4ec');
+      surplus.forEach((o) => o.destroy());
+      this.obstacles = this.obstacles.filter((o) => !surplus.includes(o));
+    }
+  }
+
+  // Security got a hand on them. Off the forklift, train on the floor, a
+  // fine off the score, and the meter clears — which stands the rest of the
+  // detail down and leaves the forklift sitting wherever it stopped for
+  // whoever fancies another go.
+  busted(p, ob, now) {
+    p.score -= CFG.score.busted;
+    p.stunUntil = now + CFG.forklift.bustedStunMs;
+    p.invulnUntil = now + CFG.forklift.bustedStunMs + ob.def.graceMs;
+    p.sprite.body.setVelocity(0, 0);
+    if (p.forklift) p.forklift.dismount();
+    this.dropTrain(p);
+    this.coolOff(p);
+    this.flash(ob.def.color);
+    this.banner(p.x, p.y, `BUSTED -${CFG.score.busted}`, ob.def.text);
     this.publish();
   }
 
@@ -3604,9 +3855,13 @@ class GameScene extends Phaser.Scene {
     this.spawnPed();
     this.buildRestock();
 
-    // A fresh crew for the new lot, one head bigger than the last.
+    // A fresh crew for the new lot, one head bigger than the last, and
+    // whatever you did on the last one is somebody else's paperwork now:
+    // the meter is wiped and the forklift is back on the dock.
     this.clearObstacles();
     this.buildObstacles();
+    this.players.forEach((pl) => this.coolOff(pl));
+    this.forklift.reset();
 
     // Badges and effects do not carry across lots.
     this.powerups.forEach((pu) => pu.destroy());
@@ -3682,6 +3937,7 @@ class GameScene extends Phaser.Scene {
       quota: this.cartsTotal,
       time: Math.max(0, this.timeLeft),
       maxTrain: CFG.cart.maxTrain,
+      maxStars: CFG.forklift.heat.stars,
       mode: this.mode,
       players: this.players.map((p) => ({
         label: p.label,
@@ -3694,6 +3950,8 @@ class GameScene extends Phaser.Scene {
         takedowns: p.takedowns || 0,
         alive: p.alive,
         zone: p.zone,
+        driving: !!p.forklift,
+        stars: this.stars(p),
       })),
     });
   }
@@ -3714,8 +3972,10 @@ class GameScene extends Phaser.Scene {
     this.updateObstacles(time);
     this.updateInteriorPeds(time);
     this.updateDoors();
+    this.updateHeat(time, dt);
 
     this.players.forEach((p) => {
+      if (p.canPushCarts && p.tappedUse()) this.useForklift(p, time);
       p.handleInput(time, dt);
       p.updateTrain();
       p.updateEffects(time);
@@ -3743,6 +4003,9 @@ class GameScene extends Phaser.Scene {
       p.marker.setAlpha(blink);
     });
 
+    this.forklift.update(time);
+    if (this.forklift.rider) this.forkliftHazards(this.forklift.rider, time);
+
     if (this.driver && this.driver.alive) {
       this.driverHazards(this.driver, time);
       this.scatterCarts(this.driver);
@@ -3752,7 +4015,9 @@ class GameScene extends Phaser.Scene {
       if (!p.alive || !p.canPushCarts || p.zone !== 'lot' || time < p.invulnUntil) continue;
 
       if (this.hitByTraffic(p)) {
-        if (!this.absorbHit(p, time)) this.runOver(p, time);
+        // A car versus a forklift is a stall, not a funeral.
+        if (p.forklift) this.forkliftCrash(p, time);
+        else if (!this.absorbHit(p, time)) this.runOver(p, time);
       } else if (
         this.driver &&
         this.driver.alive &&
@@ -3769,8 +4034,9 @@ class GameScene extends Phaser.Scene {
         }
       } else if (this.resolveObstacles(p, time)) {
         // An obstacle caught them; it decides what that costs.
-      } else if (this.hitByPed(p) && !p.hasEffect('shield', time)) {
-        // Shoppers just bounce off a shield — it only breaks on a motor.
+      } else if (this.hitByPed(p) && !p.forklift && !p.hasEffect('shield', time)) {
+        // Shoppers just bounce off a shield — it only breaks on a motor —
+        // and a shopper in front of a forklift is already on the floor.
         this.bumpedByPed(p, time);
       }
       if (this.gameOver) return;

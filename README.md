@@ -6,6 +6,12 @@ don't get flattened by traffic or bowled over by shoppers. Power-up badges drop
 around the lot as you work: a shield, a speed boost and a strength boost that
 lets you haul a longer train.
 
+Or don't do the job. There is a forklift sitting on the receiving dock with the
+key in it, and nothing between you and it. Take it and you can tow the whole
+corral back in one run and drive straight through anybody who doesn't move —
+shoppers, coworkers, the other player. Loss prevention take an interest.
+See [The forklift](#the-forklift).
+
 ## Run it
 
 Double-click `index.html`, or serve it:
@@ -42,6 +48,8 @@ how many carts are left standing in the corrals.
 | ------ | ---------------------------------------- |
 | Arrows | Walk (8-way) — solo, or P1 in two-player |
 | WASD   | Same — solo, or P2 in two-player         |
+| Enter  | Get on / off the forklift — solo, or P1  |
+| E      | Same — solo, or P2 in two-player         |
 | R      | Restart the lot                          |
 | M      | Back to the mode select                  |
 
@@ -59,7 +67,9 @@ and the higher score wins it.
 
 On a touchscreen the game puts an on-screen stick in the bottom corner — bottom
 left for player one, bottom right for the second player, which matches the sides
-of the split screen — plus ↺ and ☰ buttons for the R and M keys. Touch
+of the split screen — plus 🚜, ↺ and ☰ buttons for the forklift, R and M keys.
+The forklift button goes to whoever is riding it, or failing that to whoever is
+standing close enough to climb on. Touch
 anywhere in a stick's corner and the ring jumps to your thumb, so you never have
 to look down to find it. The sticks are analogue: a half push is a half-speed
 walk, which is what you want threading between parked cars. Keys and sticks work
@@ -86,6 +96,9 @@ whenever it hits something.
 - The rider cannot be knocked out — only scored against.
 - **Attendant wins** by returning all 18 carts. **Rider wins** by taking the
   attendant's last life (or letting the clock run them out of lives).
+- The attendant has an answer, if they are willing to take it: the forklift on
+  the receiving dock will run the moped down for **+260** and spill the rider
+  the way a crash does. The rider cannot steal it — they never dismount.
 
 ## Rules
 
@@ -118,6 +131,9 @@ whenever it hits something.
   the store holds off entirely once 32 carts are live on the lot. Shoppers who
   finish a trip while the lot is over its usual crowd walk back in through the
   entry door and off the board, so the place doesn't silt up with people.
+- **The forklift changes all of the above.** It tows carts without limit, takes
+  a car without losing you a life, and puts anyone it touches on the floor. What
+  it costs is heat. See [The forklift](#the-forklift).
 - 190 seconds per lot. Running out costs every player still on the clock a life.
 - Score: 120 per cart, +40 for each cart beyond the first in one delivery, 600 per
   lot cleared plus 4 per second remaining, 60 for a power-up.
@@ -125,7 +141,9 @@ whenever it hits something.
 ### Obstacles
 
 Obstacles are the lot's moving hazards, as opposed to the scenery — parked cars
-and planters — which simply sits there and stops you. There is one kind so far.
+and planters — which simply sits there and stops you. There are two kinds: the
+angry coworkers who work every lot, and the security detail, who are only out
+there because you gave them a reason.
 
 **Angry coworkers** are sore about being left on the tills while you get the
 fresh air. They mooch around the rows at walking pace until they spot an
@@ -157,6 +175,13 @@ What makes them readable:
 
 Two of them work the first lot and one more joins each lot after, up to six.
 
+**Security** are not on the rota. Nobody is out there at the start of a shift:
+the detail is spawned off the heat meter rather than the level number, walks out
+of the storefront doors, and walks back in when the meter empties. They want
+whoever is *wanted*, not whoever is loaded, they will cross the whole lot to get
+there, and they are the one thing out there that the forklift cannot drive
+through — catching the driver hauls them off it. See below.
+
 ### Power-ups
 
 Badges drop into the lot every 13-22 seconds, up to three on the ground at once,
@@ -177,6 +202,67 @@ Each player's running effects show in the HUD with the seconds left on them, and
 as coloured rings around their marker. Picking up a kind you already have tops
 its timer up. Losing a life, or clearing the lot, wipes everything you were
 carrying. Only attendants collect — in versus the rider rides straight over them.
+
+## The forklift
+
+There is a forklift parked on the receiving floor, just inside the roll-up doors
+behind the trailer dock — the far west end of the store, past the break room.
+It is not part of the job and nobody hands it to you. Walk up to it and press
+**Enter** (or **E**, or the 🚜 button on a touchscreen) and it is yours.
+
+Taking it off the dock the first time is worth **+350** and puts the first mark
+on your heat meter. Everything after that is up to you.
+
+**What it changes**
+
+| | On foot | On the forklift |
+| --- | --- | --- |
+| Carts at once | 8 (14 with a strength badge) | 40 — i.e. as many as the lot holds |
+| Speed | 235, minus 13 for every cart in the train | 310 flat, whatever it is towing |
+| Picking carts up | nose each one, 30px | sweeps at 54px — a corral in one pass |
+| Hit by a car | lose a life, train goes home | stalls for a second; life and train kept |
+| Hit a shopper | you are stunned, train everywhere | they go on the floor, you keep going |
+| A coworker charging you | train everywhere | you drive through them |
+
+It handles like something that weighs three tonnes, which is the point: it winds
+up to speed over about a second, sheds it faster than it gains it, and swings
+round onto a new heading at a fixed rate rather than snapping to the stick.
+Everything else on the lot moves the instant you ask it to. This does not.
+
+It goes wherever you do — out through either storefront door, down the aisles,
+into the parking rows. The driver keeps their own body, so it threads exactly
+the gaps an attendant threads.
+
+**Running people down** pays **+260** a head and works on everybody: shoppers out
+in the rows, the cosmetic shoppers inside the store, angry coworkers mid-charge,
+and the other player. In co-op that costs your partner a life, exactly as a car
+would; in versus it spills the moped rider the way a crash does. Nobody can be
+hit while they are still standing on their respawn point, and a shield eats the
+hit and bounces you off.
+
+**Heat** is what it costs. The meter runs 0-100 and shows in the HUD as stars:
+
+| | |
+| --- | --- |
+| Taking it off the dock | +18 |
+| Every body you put on the floor | +22 |
+| Clipping live traffic | +8 |
+| Standing still about it | -6 a second, after 4.5s of quiet |
+
+One guard comes out for every star past the first, up to four, and they come out
+of the storefront doors. Let the meter empty and they walk back in. Go inside the
+store and they cannot follow — they have no body on that floor — so they post up
+at the nearest door and wait, which is exactly where a run to the cart return has
+to come back out.
+
+**Getting caught** costs **-500**, the train on the asphalt, and the forklift: a
+guard hauls you off it where you stand, and the meter clears. The forklift stays
+wherever it stopped, so it is there to take again — and so is anybody else's, in
+co-op. There is one machine on the site and whoever gets to it first has it.
+
+Press the use key again to step off it deliberately. Losing a life, being
+eliminated or clearing the lot all leave it behind too; clearing a lot also wipes
+everyone's heat and puts the forklift back on the dock for the new shift.
 
 ## The lot
 
@@ -252,7 +338,7 @@ It is laid out the way a warehouse club is, back to front:
 | Front floor | The open **apparel and seasonal** floor: flat tables of folded stock and shrink-wrapped pallet displays. |
 | Front end | Eight **checkout lanes** across the width — belt, register, card terminal, bagging shelf, cashier — with gaps where the two doorways land, and the **CART RETURN** west of the lot of them. |
 | Front strip | Tiled, with matting inside each doorway, nested carts waiting in both corners and the receipt-check podium beside the exit. |
-| West wall | Staff-only back-of-house behind the trailer yard outside: the **break room**, the marked-out **receiving** floor with its roll-up dock doors and staged pallets, and the **food court**. |
+| West wall | Staff-only back-of-house behind the trailer yard outside: the **break room**, the marked-out **receiving** floor with its roll-up dock doors, staged pallets and the **forklift** nobody is watching, and the **food court**. |
 
 Push a full train through either door and hand it over at the cart return,
 same as the old outdoor drop zone worked. Shoppers walk the lanes with carts
@@ -278,17 +364,18 @@ index.html          page shell + script tags (classic scripts, so file:// works)
 style.css           page chrome; CSS scales the canvas to the window, and styles the touch sticks
 src/config.js       CFG: lot + store-interior geometry, lanes, signals, player/cart/ped/power-up tuning, scoring
 src/powerup.js      Powerup: one badge on the ground — its kind, its timer, its pulse
-src/obstacle.js     Obstacle + the kinds registered on it: the lot's moving hazards (angry coworkers)
+src/obstacle.js     Obstacle + the kinds registered on it: the lot's moving hazards (angry coworkers, security)
 src/storePed.js     StorePed: a cosmetic interior shopper — wanders the aisles, drifts through checkout
 src/touch.js        TouchControls: the on-screen sticks and buttons, a DOM layer over the canvas
 src/player.js       LotPlayer: one attendant's sprite, keys, cart train, lives, score, effects
 src/moped.js        MopedPlayer: the versus rider — a LotPlayer that rides instead of pushes
+src/forklift.js     Forklift: the stolen dock forklift — mounting, the drive model, the beacon
 src/main.js         Phaser.Game boot (arcade physics)
 src/scenes/
   BootScene.js      generates every texture procedurally (placeholder art lives here)
   MenuScene.js      title + solo / co-op / versus select
-  GameScene.js      lot + store-interior rendering, cameras + minimap, traffic + signals, peds, obstacles, carts, scoring
-  HudScene.js       per-player score / lives / train, cart counter, timer band, end card
+  GameScene.js      lot + store-interior rendering, cameras + minimap, traffic + signals, peds, obstacles, the forklift + heat, carts, scoring
+  HudScene.js       per-player score / lives / train / wanted stars, cart counter, timer band, end card
 vendor/phaser.min.js
 assets/             drop real sprites here when they exist
 ```
@@ -301,11 +388,13 @@ with a `this.load.image(key, 'assets/…')` in a `preload()` and keep the keys:
 - `player_1`, `player_2`, `ped_0`…`ped_5` — people, drawn facing right (rotated
   to heading)
 - `moped` — the versus moped and its rider, drawn pointing right
+- `forklift` — the dock forklift, drawn pointing right, i.e. the way its forks
+  point
 - `cart`
 - `power_shield`, `power_speed`, `power_strength` — power-up badges, drawn
   upright (they are never rotated to a heading); one per `CFG.powerups.kinds` row
-- `obs_coworker` — obstacles, drawn facing right like the shoppers (rotated to
-  heading); one per `CFG.obstacles.kinds` row
+- `obs_coworker`, `obs_security` — obstacles, drawn facing right like the
+  shoppers (rotated to heading); one per `CFG.obstacles.kinds` row
 - `parked_0`…`parked_5` — parked cars, drawn pointing up
 - `traffic_<body>_<paint>` — sedan / hatch / suv / van / truck in 8 paints, drawn
   pointing right; the scene flips or rotates them per lane
@@ -319,8 +408,9 @@ from, so adding or removing art means editing those arrays and nothing else.
 gap = sparser traffic), `fields` and `stallRows` and `parkedFill`, corral positions
 and cart counts, `lights` timings, `peds.count`, player speed and the per-cart
 speed penalty, `levelSeconds`, `levelQuota`, `lives`, `levelSpeedStep`, the
-`moped` block (hit radius, stun lengths, spawn), the `restock`, `powerups` and
-`obstacles` blocks and the score table.
+`moped` block (hit radius, stun lengths, spawn), the `forklift` block (where it
+parks, how it handles, how wide it sweeps, and the nested `heat` meter), the
+`restock`, `powerups` and `obstacles` blocks and the score table.
 
 Two scales live in there and it matters which one you are editing:
 

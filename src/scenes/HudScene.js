@@ -47,7 +47,14 @@ class HudScene extends Phaser.Scene {
     this.renderEndCard(this.registry.get('gameover'));
   }
 
-  playerLine(p, maxTrain) {
+  // How wanted somebody is, as filled and empty stars. Nothing at all while
+  // they are clean, so the line only grows once there is something to say.
+  heatMeter(p, maxStars) {
+    if (!p.stars) return '';
+    return `   ${'★'.repeat(p.stars)}${'☆'.repeat(Math.max(0, maxStars - p.stars))}`;
+  }
+
+  playerLine(p, maxTrain, maxStars) {
     const score = `${p.label} ${String(Math.max(0, p.score)).padStart(6, '0')}`;
     if (p.kind === 'driver') {
       return `${score}   TAKEDOWNS ${p.takedowns}`;
@@ -57,19 +64,24 @@ class HudScene extends Phaser.Scene {
     const power = (p.effects || [])
       .map((e) => `${e.label} ${Math.ceil(e.left / 1000)}s`)
       .join(' ');
-    let line = `${score}   ${'♥'.repeat(p.lives)}   PUSHING ${p.train}/${
-      p.maxTrain || maxTrain
-    }`;
+    // On the forklift the cap stops being a number worth reading — the
+    // forks take whatever is in front of them — so it reads as one.
+    const cap = p.driving ? '∞' : p.maxTrain || maxTrain;
+    let line = `${score}   ${'♥'.repeat(p.lives)}   ${
+      p.driving ? 'TOWING' : 'PUSHING'
+    } ${p.train}/${cap}`;
     if (p.zone === 'interior') line += '   IN STORE';
+    line += this.heatMeter(p, maxStars);
     return power ? `${line}   ${power}` : line;
   }
 
   render(d) {
     if (!d || !this.scene.isActive()) return;
 
-    this.p1.setText(this.playerLine(d.players[0], d.maxTrain));
+    const stars = d.maxStars || 0;
+    this.p1.setText(this.playerLine(d.players[0], d.maxTrain, stars));
     const second = d.players[1];
-    this.p2.setText(second ? this.playerLine(second, d.maxTrain) : '');
+    this.p2.setText(second ? this.playerLine(second, d.maxTrain, stars) : '');
     if (second) this.p2.setColor(this.p2Color[second.kind]);
     // A progress figure, not a headcount: the store keeps restocking the
     // corrals, so what matters is how much of the quota is handed over.

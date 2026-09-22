@@ -33,6 +33,7 @@ class StorePed {
 
     this.speed = 46;
     this.pauseUntil = 0;
+    this.downUntil = 0; // flattened by the forklift; see flatten()
     this.waypoints = [];
     this.pickAisleGoal();
   }
@@ -111,6 +112,29 @@ class StorePed {
     it.departments.forEach((d) => out.push({ x: d.x, y: d.y, w: d.w, h: d.h }));
     StorePed._solids = out;
     return out;
+  }
+
+  // Run down by the forklift. They get thrown clear of it, lie there for a
+  // moment, and then pick themselves up and carry on shopping, because the
+  // alternative is a body on the floor of a scene that has no idea what to
+  // do with one. The cart, if they had one, is left where it stopped.
+  flatten(fromX, fromY, now) {
+    const a = Phaser.Math.Angle.Between(fromX, fromY, this.x, this.y);
+    const push = 30;
+    const f = CFG.interior.floor;
+    this.x = Phaser.Math.Clamp(this.x + Math.cos(a) * push, f.x1 + 30, f.x2 - 30);
+    this.y = Phaser.Math.Clamp(this.y + Math.sin(a) * push, f.y1 + 30, f.y2 - 30);
+    this.img.setPosition(this.x, this.y);
+    this.downUntil = now + CFG.forklift.downMs;
+    this.pauseUntil = this.downUntil;
+    this.scene.tweens.add({
+      targets: [this.img, this.cartImg].filter(Boolean),
+      alpha: 0.35,
+      yoyo: true,
+      duration: CFG.forklift.downMs / 2,
+    });
+    // Wherever they end up, it is off their route: walk a fresh one.
+    this.pickAisleGoal();
   }
 
   update(now) {

@@ -46,6 +46,7 @@ const TouchControls = {
 
     this.buttons = document.createElement('div');
     this.buttons.className = 'touch-buttons';
+    this.buttons.appendChild(this.makeButton('use', '🚜', 'get on or off the forklift'));
     this.buttons.appendChild(this.makeButton('restart', '↺', 'restart'));
     this.buttons.appendChild(this.makeButton('menu', '☰', 'menu'));
     this.root.appendChild(this.buttons);

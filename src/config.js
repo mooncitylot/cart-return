@@ -277,6 +277,50 @@ const CFG = {
     crashImmuneMs: 1200, // no repeat penalty while untangling from a wreck
   },
 
+  // The forklift. It lives on the receiving floor, the inside face of the
+  // trailer dock, and it is nobody's to take — which has never stopped
+  // anyone. Get on it and the shift stops being a shift: it tows as many
+  // carts as the lot holds, it shrugs off the traffic that flattens an
+  // attendant on foot, and it puts anyone who doesn't move on the floor.
+  //
+  // What it costs is heat. Every body it leaves behind gets back to the
+  // front office, and the front office sends people out — see the
+  // `security` obstacle kind below, which is spawned off the heat meter
+  // rather than off the level number.
+  forklift: {
+    // Parked nose-out under the roll-up doors at the south end of the
+    // receiving floor, clear of the aisle the break-room doorway feeds.
+    spawn: { x: 952, y: 790 },
+    mountRadius: 46, // how close you have to be to climb on
+    topSpeed: 310, // faster than a walk, and it never slows for the train
+    accel: 430, // px/s² winding up — three tonnes does not leap
+    brake: 700, // and shedding, which is the half you feel in an aisle
+    turnRate: 4.4, // rad/sec the mast swings round onto a new heading
+    maxTrain: 40, // i.e. as many as the lot holds: the forks don't care
+    pickupRadius: 54, // and it sweeps them up rather than nosing each one
+    hitRadius: 30, // how close it has to pass to put somebody down
+    downMs: 2800, // how long whoever it hit stays on the floor
+    stallMs: 1100, // clipped by traffic: it stalls, you don't die
+    bustedStunMs: 1500, // hauled off it by security
+    beaconMs: 620, // the amber beacon's flash period
+    beaconOffset: 21, // back on the counterweight, clear of the operator
+
+    // The heat meter, 0-100, kept per player. Stars are just the meter
+    // rounded up into bands, which is all the HUD and the guards read.
+    heat: {
+      max: 100,
+      stars: 5,
+      theft: 18, // taking it off the dock at all
+      perPerson: 22, // every single body, shopper or staff or player
+      perCrash: 8, // and clipping live traffic, which people do notice
+      decay: 6, // meter points shed per second once you stop
+      calmMs: 4500, // of quiet before it starts shedding at all
+      // One guard per star above the first: two stars brings one out,
+      // five brings the whole detail (capped by the kind's `max`).
+      guardsFromStar: 1,
+    },
+  },
+
   cart: {
     maxTrain: 8, // longer trains, because the haul back to the store is long
     spacing: 24, // px between carts in the pushed train
@@ -360,6 +404,35 @@ const CFG = {
         dodgeMs: 450, // sidestep when a parked car gets between them and you
         knockback: 26, // px a shield throws them back
       },
+      // Loss prevention. Not on the rota at the start of a shift and not
+      // tied to the level: `spawnedBy: 'heat'` keeps buildObstacles() off
+      // them entirely, and the heat meter tops the detail up and stands it
+      // back down — see GameScene.updateHeat(). They come out of the
+      // storefront doors, they only ever want whoever is wanted, and they
+      // are the one thing on the lot the forklift cannot simply drive
+      // through: catching the driver hauls them off it.
+      {
+        key: 'security',
+        label: 'SECURITY',
+        color: 0x6fa8d4,
+        text: '#8fc4ec',
+        spawnedBy: 'heat',
+        count: 0,
+        perLevel: 0,
+        max: 4,
+        speed: 78, // the walk back to the doors once you go quiet
+        chargeSpeed: 208, // just short of a forklift flat out
+        aggroRange: 4000, // they have radios: the whole lot is their beat
+        loseRange: 4000,
+        minTrain: 0, // it was never about the carts
+        hitRadius: 26,
+        stunMs: 900,
+        graceMs: 300,
+        gloatMs: 1200,
+        cooldownMs: 1500,
+        dodgeMs: 450,
+        knockback: 26,
+      },
     ],
   },
 
@@ -395,6 +468,10 @@ const CFG = {
     takedown: 400,
     pedPenalty: 150,
     crashPenalty: 100,
+    // the forklift
+    forkliftTheft: 350, // for getting it off the dock in the first place
+    flatten: 260, // per body it puts on the floor
+    busted: 500, // and what security takes off you for the privilege
   },
 
   colors: {

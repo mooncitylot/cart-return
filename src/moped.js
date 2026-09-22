@@ -30,7 +30,7 @@ class MopedPlayer extends LotPlayer {
     return CFG.player.speed;
   }
 
-  handleInput(now) {
+  handleInput(now, dt) {
     if (!this.alive) {
       this.sprite.body.setVelocity(0, 0);
       return;
@@ -43,7 +43,7 @@ class MopedPlayer extends LotPlayer {
       return;
     }
 
-    super.handleInput(now);
+    super.handleInput(now, dt);
   }
 
   spinOut(now, ms) {

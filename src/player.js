@@ -60,6 +60,16 @@ class LotPlayer {
     this.inBreakRoom = false;
     this.nextRechargeAt = 0;
 
+    // The forklift, while this player is on it (src/forklift.js). Set by
+    // Forklift.mount() and cleared by dismount(); everything below that
+    // changes when you are driving reads it rather than a mode flag.
+    this.forklift = null;
+    // Heat, 0..CFG.forklift.heat.max. Earned by what the forklift does to
+    // people, shed by not doing it for a while, and read by the security
+    // detail — see GameScene.updateHeat().
+    this.heat = 0;
+    this.calmAt = 0; // nothing is shed until the clock passes this
+
     // Power-up effects: kind -> the timestamp it runs out at. Wiped on respawn,
     // so losing a life costs you whatever you were carrying.
     this.effects = {};
@@ -79,6 +89,8 @@ class LotPlayer {
   // worth something to someone dragging a full train.
   speed() {
     const now = this.scene.time.now;
+    // The forklift does not care what it is towing and never took the badge.
+    if (this.forklift) return CFG.forklift.topSpeed;
     const boost = this.hasEffect('speed', now) ? Powerup.def('speed').mul : 1;
     const perCart =
       CFG.player.speedPerCart *
@@ -92,8 +104,15 @@ class LotPlayer {
   // How many carts this player may be pushing right now. Strength only gates
   // new pickups: a train already gathered keeps following once it lapses.
   maxTrain(now) {
+    if (this.forklift) return CFG.forklift.maxTrain;
     const extra = this.hasEffect('strength', now) ? Powerup.def('strength').extraTrain : 0;
     return CFG.cart.maxTrain + extra;
+  }
+
+  // How wide a sweep picks a cart up. On foot you nose each one; the forks
+  // take in whatever they pass, which is what turns a corral into one run.
+  pickupRadius() {
+    return this.forklift ? CFG.forklift.pickupRadius : 30;
   }
 
   // ---- power-ups ----
@@ -167,14 +186,28 @@ class LotPlayer {
     return v;
   }
 
-  handleInput(now) {
+  // Edge-triggered: true on the frame the use key goes down, on any key set
+  // bound to this player. Solo holds both sets, so either key works.
+  tappedUse() {
+    return this.keySets.some((k) => k.use && Phaser.Input.Keyboard.JustDown(k.use));
+  }
+
+  handleInput(now, dt = 1 / 60) {
     const body = this.sprite.body;
     if (!this.alive || now < this.stunUntil) {
       body.setVelocity(0, 0);
+      if (this.forklift) this.forklift.stall();
       return;
     }
 
     const v = this.readDirection();
+    // On the forklift the same stick means something else entirely: it is a
+    // heading to swing round onto, not a direction to step in.
+    if (this.forklift) {
+      this.forklift.drive(v, dt);
+      return;
+    }
+
     const push = v.length();
     if (push < 0.001) {
       body.setVelocity(0, 0);
@@ -232,6 +265,9 @@ class LotPlayer {
 
   respawn(now, invulnMs) {
     this.spawnSafe = true;
+    // Whatever put you down, you are not on the forklift any more: it stays
+    // out there where it stopped, for you or anybody else to go back for.
+    if (this.forklift) this.forklift.dismount();
     this.clearEffects();
     this.sprite.setPosition(this.spawn.x, this.spawn.y);
     this.marker.setPosition(this.spawn.x, this.spawn.y);
@@ -251,6 +287,8 @@ class LotPlayer {
 
   eliminate() {
     this.alive = false;
+    if (this.forklift) this.forklift.dismount();
+    this.heat = 0;
     this.clearEffects();
     this.marker.setVisible(false);
     this.sprite.setVisible(false);

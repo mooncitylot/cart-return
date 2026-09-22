@@ -29,6 +29,7 @@ class BootScene extends Phaser.Scene {
 
     this.makeCart();
     this.makeMoped();
+    this.makeForklift();
     CFG.powerups.kinds.forEach((k) => this.makePowerup(`power_${k.key}`, k));
     CFG.obstacles.kinds.forEach((k) => this.makeObstacle(`obs_${k.key}`, k));
 
@@ -160,6 +161,65 @@ class BootScene extends Phaser.Scene {
     g.fillRect(32, mid - 4, 4, 8);
 
     g.generateTexture('moped', w, h);
+    g.destroy();
+  }
+
+  // The forklift off the receiving dock, seen from above and facing right,
+  // which is the way its forks point. Read back to front that is: the black
+  // counterweight, the yellow body over the drive axle, the operator under
+  // the overhead guard, then the mast and two forks out in front. The
+  // silhouette is the tell — nothing else on the lot has anything sticking
+  // out of it.
+  makeForklift() {
+    const w = 58;
+    const h = 34;
+    const mid = h / 2;
+    const g = this.gfx();
+
+    // Rear counterweight and the body. The weight is deliberately darker
+    // than the paint: from above it is the heavy end of the machine.
+    g.fillStyle(0x2f3138, 1);
+    g.fillRoundedRect(0, 5, 14, h - 10, 4);
+    g.fillStyle(0xd9a626, 1);
+    g.fillRoundedRect(6, 4, 30, h - 8, 4);
+    g.fillStyle(0xb1831a, 1); // the shaded flank, so it is not one flat slab
+    g.fillRect(6, h - 9, 30, 5);
+
+    // Tyres: the little steer wheels at the back, the big drive pair up
+    // front under the mast, where the load actually sits.
+    g.fillStyle(0x16191e, 1);
+    g.fillRect(6, 1, 9, 5);
+    g.fillRect(6, h - 6, 9, 5);
+    g.fillRect(26, -1, 13, 7);
+    g.fillRect(26, h - 6, 13, 7);
+
+    // Operator's station: the seat, the driver, and the overhead guard over
+    // the top of both, drawn as the frame you'd actually see from up here.
+    g.fillStyle(0x3a3d44, 1);
+    g.fillRoundedRect(11, mid - 7, 12, 14, 3);
+    g.fillStyle(0xf0d9b5, 1);
+    g.fillCircle(19, mid, 5.5);
+    g.fillStyle(0xe8b13c, 1); // hard hat
+    g.fillCircle(19, mid, 4);
+    g.lineStyle(2, 0x4e535c, 1); // guard posts and roof bars
+    g.strokeRect(9, 4, 22, h - 8);
+    g.lineBetween(14, 4, 14, h - 4);
+    g.lineBetween(25, 4, 25, h - 4);
+
+    // Mast across the nose, then the forks out ahead of it. Bare steel,
+    // because that is the part that is never painted and never clean.
+    g.fillStyle(0x8d97a3, 1);
+    g.fillRect(36, 3, 6, h - 6);
+    g.fillStyle(0x6d7783, 1);
+    g.fillRect(38, 3, 2, h - 6);
+    g.fillStyle(0xaeb7c2, 1);
+    g.fillRect(42, 6, 16, 5);
+    g.fillRect(42, h - 11, 16, 5);
+    g.fillStyle(0xd7dee6, 1); // the worn tips
+    g.fillRect(54, 6, 4, 5);
+    g.fillRect(54, h - 11, 4, 5);
+
+    g.generateTexture('forklift', w, h);
     g.destroy();
   }
 

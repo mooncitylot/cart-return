@@ -75,6 +75,20 @@ class Obstacle {
     return false;
   }
 
+  // Does this stand in front of a stolen forklift, or does the forklift
+  // simply drive through it? Anything that doesn't is run over like any
+  // other body on the lot — see GameScene.forkliftHazards().
+  stopsVehicles() {
+    return false;
+  }
+
+  // What catching an attendant costs them. The default is a shove: the
+  // train everywhere and a moment on the floor. Kinds that do something
+  // else override this, so GameScene never has to name one.
+  punish(p, now) {
+    this.scene.shovedBy(p, this, now);
+  }
+
   update() {}
   blocked() {}
   landedHit() {}
@@ -269,3 +283,64 @@ class AngryCoworker extends Obstacle {
 }
 
 Obstacle.register('coworker', AngryCoworker);
+
+// Obstacle two: loss prevention. Nobody's on the lot at the start of a
+// shift — the detail is spawned and stood back down off the heat meter
+// instead of the level number (GameScene.updateHeat()), so they exist only
+// because somebody took the forklift and started putting people on the
+// floor.
+//
+// They differ from a coworker in three ways that matter: they want whoever
+// is *wanted* rather than whoever is loaded, they will cross the whole lot
+// to get there, and they are the one thing the forklift cannot simply drive
+// through. Catching the driver hauls them off it — see GameScene.busted().
+class StoreSecurity extends AngryCoworker {
+  // A machine that weighs three tonnes does not shrug them aside.
+  stopsVehicles() {
+    return true;
+  }
+
+  // The most wanted attendant on the lot, whatever they happen to be
+  // pushing. A clean one is none of their business, which is what makes
+  // dumping the forklift and going quiet an actual escape.
+  pick(now) {
+    if (now < this.calmUntil) return null;
+    let best = null;
+    this.scene.activeAttendants().forEach((p) => {
+      if (p.heat <= 0) return;
+      const d = Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y);
+      if (!best || d < best.d) best = { p, d };
+    });
+    return best && best.p;
+  }
+
+  stillWorthIt() {
+    const p = this.target;
+    return p && p.alive && p.heat > 0;
+  }
+
+  // A wanted driver who is inside the store is out of reach: the lot is the
+  // only floor these have a body on. So they post up at the storefront
+  // doors and wait, which is exactly where the run to the cart return has
+  // to come back out.
+  update(now) {
+    const p = this.target;
+    if (p && p.zone === 'interior' && now >= this.stunUntil && this.stillWorthIt()) {
+      this.marker.setPosition(this.x, this.y);
+      this.alert.setPosition(this.x, this.y - 24).setVisible(true);
+      this.marker.setStrokeStyle(2, this.def.color, 0.95);
+      const door = this.scene.nearestDoor(this.x);
+      this.walkTo(door.x, CFG.sidewalk.y + 30, this.def.speed);
+      return;
+    }
+    super.update(now);
+  }
+
+  // Not a shove: an arrest. Off the forklift, train on the floor, and the
+  // heat goes with it — which is what stands the rest of the detail down.
+  punish(p, now) {
+    this.scene.busted(p, this, now);
+  }
+}
+
+Obstacle.register('security', StoreSecurity);
