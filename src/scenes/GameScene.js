@@ -719,6 +719,10 @@ class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(2);
+
+    // The cashier: stood behind the register, facing back up the belt
+    // toward the aisles the way an actual one watches for the next customer.
+    this.add.image(c.x - 26, c.y + 26, 'employee').setDepth(6).setRotation(-Math.PI / 2);
   }
 
   // The staff break room: a walled-off room with a hinged door on its south

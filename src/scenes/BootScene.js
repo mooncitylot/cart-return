@@ -23,6 +23,11 @@ class BootScene extends Phaser.Scene {
       return key;
     });
 
+    // Checkout cashiers: the same grey-shirt-and-vest silhouette an obstacle
+    // coworker uses, in a calmer colour — a cashier never chases anyone, so
+    // there's nothing to confuse it with out in the lot.
+    this.makeObstacle('employee', { color: 0x3c6ea8 });
+
     this.makeCart();
     this.makeMoped();
     CFG.powerups.kinds.forEach((k) => this.makePowerup(`power_${k.key}`, k));
@@ -82,15 +87,17 @@ class BootScene extends Phaser.Scene {
     g.destroy();
   }
 
-  // Cart seen from above, handle end trailing left.
+  // Cart seen from above, handle end trailing left. Red plastic basket, same
+  // as every cart in the lot and the store — a metal handle bar is the only
+  // part that isn't.
   makeCart() {
     const w = 26;
     const h = 20;
     const g = this.gfx();
 
-    g.fillStyle(0xd8dee6, 1);
+    g.fillStyle(0xc23b32, 1);
     g.fillRoundedRect(0, 1, w - 3, h - 2, 4);
-    g.lineStyle(1, 0x8d97a3, 1);
+    g.lineStyle(1, 0x7a231d, 1);
     g.strokeRoundedRect(0, 1, w - 3, h - 2, 4);
     for (let i = 1; i < 4; i++) {
       const x = (w - 3) * (i / 4);
