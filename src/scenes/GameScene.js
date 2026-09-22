@@ -577,26 +577,99 @@ class GameScene extends Phaser.Scene {
 
   // Shelf units, laid out as columns with a walkable lane either side —
   // solid, so a player (and a cart train) has to actually thread the aisles
-  // rather than cut through the shelving. Orange steel racking (uprights and
-  // a beam per shelf level) over dark shrink-wrapped pallets, the way a real
-  // warehouse club's high-bay storage reads.
+  // rather than cut through the shelving. Orange steel racking (lit uprights,
+  // a beam per shelf level with its own shadow) over individually-coloured
+  // pallets, the way a real warehouse club's high-bay storage reads — flat
+  // blocks of a single colour read as paint, not goods on a shelf.
   buildAisles(g) {
-    const c = CFG.colors;
-    CFG.interior.aisles.forEach((a) => {
-      g.fillStyle(c.shelfSlat, 1);
-      g.fillRect(a.x, a.y, a.w, a.h);
+    const beamStep = 76;
+    CFG.interior.aisles.forEach((a, ai) => {
+      // Grounds the unit: a soft shadow it casts onto the floor, offset
+      // toward the bottom-right so it peeks out past the shelf drawn over it.
+      g.fillStyle(0x000000, 0.16);
+      g.fillRect(a.x + 5, a.y + 5, a.w, a.h);
 
-      g.fillStyle(c.shelfFrame, 1);
-      g.fillRect(a.x, a.y, 6, a.h); // uprights
-      g.fillRect(a.x + a.w - 6, a.y, 6, a.h);
-      for (let y = a.y; y < a.y + a.h; y += 76) {
-        g.fillRect(a.x, y, a.w, 6); // beam, one per shelf level
-      }
+      this.buildShelfBay(g, a, ai, beamStep);
 
       const zone = this.add.zone(a.x + a.w / 2, a.y + a.h / 2, a.w, a.h);
       this.physics.add.existing(zone, true);
       this.scenery.add(zone);
     });
+  }
+
+  // One shelf unit's contents and racking. Broken out of buildAisles() so
+  // the per-level loop (pallets, then the beam and its cast shadow) reads on
+  // its own.
+  buildShelfBay(g, a, ai, beamStep) {
+    const c = CFG.colors;
+    const pal = c.boxPalette;
+    const levels = Math.floor(a.h / beamStep);
+    const cols = 2;
+    const colW = (a.w - 12) / cols;
+
+    for (let lvl = 0; lvl < levels; lvl++) {
+      const ly = a.y + lvl * beamStep + 7;
+      const lh = beamStep - 13;
+      for (let col = 0; col < cols; col++) {
+        const bx = a.x + 6 + col * colW;
+        const box = pal[(ai * 7 + lvl * cols + col) % pal.length];
+        g.fillStyle(box, 1);
+        g.fillRect(bx + 1, ly, colW - 2, lh);
+        // Shrink-wrap sheen: a lighter band near the top, a stray diagonal
+        // streak, so each pallet catches the light instead of sitting flat.
+        g.fillStyle(0xffffff, 0.1);
+        g.fillRect(bx + 1, ly, colW - 2, 5);
+        g.fillStyle(0xffffff, 0.05);
+        g.fillTriangle(
+          bx + colW * 0.32,
+          ly + lh,
+          bx + colW * 0.5,
+          ly + lh,
+          bx + colW * 0.38,
+          ly + lh * 0.55
+        );
+        g.fillStyle(0x000000, 0.18);
+        g.fillRect(bx + 1, ly + lh - 3, colW - 2, 3); // undershadow, tucked under the beam above
+      }
+      // Seam between the two pallets on this level.
+      g.fillStyle(0x000000, 0.25);
+      g.fillRect(a.x + 6 + colW - 1, ly, 2, lh);
+    }
+
+    // Uprights: a lit face and a shadowed face, so the post reads as round
+    // steel tube rather than a flat orange bar.
+    g.fillStyle(c.shelfFrameLit, 1);
+    g.fillRect(a.x, a.y, 4, a.h);
+    g.fillRect(a.x + a.w - 6, a.y, 4, a.h);
+    g.fillStyle(c.shelfFrameShade, 1);
+    g.fillRect(a.x + 4, a.y, 2, a.h);
+    g.fillRect(a.x + a.w - 2, a.y, 2, a.h);
+
+    // Diagonal bracing at the top and bottom of the frame, the way a real
+    // pallet-racking end reads even from square-on.
+    g.lineStyle(2, c.shelfFrameShade, 0.6);
+    g.lineBetween(a.x + 3, a.y, a.x + a.w - 3, a.y + 30);
+    g.lineBetween(a.x + a.w - 3, a.y, a.x + 3, a.y + 30);
+    g.lineBetween(a.x + 3, a.y + a.h, a.x + a.w - 3, a.y + a.h - 30);
+    g.lineBetween(a.x + a.w - 3, a.y + a.h, a.x + 3, a.y + a.h - 30);
+
+    // Beams: a lit top edge over a shadowed underside, plus the shadow it
+    // throws onto the pallet sitting below it.
+    for (let y = a.y; y < a.y + a.h; y += beamStep) {
+      g.fillStyle(c.shelfFrameLit, 1);
+      g.fillRect(a.x, y, a.w, 3);
+      g.fillStyle(c.shelfFrame, 1);
+      g.fillRect(a.x, y + 3, a.w, 3);
+      g.fillStyle(0x000000, 0.3);
+      g.fillRect(a.x, y + 6, a.w, 3);
+
+      // A shelf-edge price tag, the way a real warehouse aisle carries them.
+      const tagX = a.x + 10 + (ai % 2) * (a.w - 40);
+      g.fillStyle(0xf3ead9, 0.9);
+      g.fillRect(tagX, y - 5, 24, 8);
+      g.fillStyle(c.signRed, 0.9);
+      g.fillRect(tagX + 2, y - 3, 8, 4);
+    }
   }
 
   // Just inside the doors: a row of real checkout lanes (interior shoppers

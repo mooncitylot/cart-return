@@ -353,6 +353,11 @@ const CFG = {
     interiorWall: 0x8d95a2,
     breakRoomFloor: 0xb7bec5,
     shelfFrame: 0xdd7a2e,
+    shelfFrameLit: 0xf2a25b, // top-lit face of the racking, for a rolled-steel highlight
+    shelfFrameShade: 0xa8571c, // shadowed face
     shelfSlat: 0x2b2f35,
+    // Palette the stacked pallets on a shelf are picked from at random —
+    // assorted packaged goods, not one flat slab of colour.
+    boxPalette: [0x5c6c78, 0x7a6a4a, 0x6a4a48, 0x4a6a58, 0x685a76, 0x7a7262],
   },
 };
