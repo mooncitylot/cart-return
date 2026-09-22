@@ -62,7 +62,9 @@ const CFG = {
     // counters — real stores put the corral and the checkout lanes in the
     // same front strip, and it's what "checking out at the front" wants.
     vestibule: {
-      dropZone: { x: 1855, y: 980, w: 300, h: 62 },
+      // West of every register, clear of the checkout lanes entirely — a
+      // full train shouldn't have to thread the belts to hand carts over.
+      dropZone: { x: 1150, y: 980, w: 300, h: 62 },
       checkout: [
         { x: 1560, y: 930 },
         { x: 1855, y: 930 },
