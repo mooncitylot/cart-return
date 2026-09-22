@@ -1,9 +1,12 @@
 // A decorative interior shopper: wanders the aisle lanes, pauses at a
 // checkout counter now and then, and keeps looping. Purely cosmetic — no
-// Arcade body, no collision with the player or shelves (its waypoints are
-// always lane centrelines, so it never needs to dodge anything), and no tie
-// into the real cart/corral economy, which stays exterior. GameScene owns
-// the pool's lifecycle: see buildInteriorPeds()/updateInteriorPeds()/
+// Arcade body, no collision with the player or shelves. It never needs to
+// dodge anything because it never moves diagonally across a shelf: every
+// route is laid out as an L (or Z) of straight legs that only ever cross
+// between lanes while standing on a row outside the shelf band — see
+// setRoute() — so a shopper reads as walking the aisles, not through them.
+// No tie into the real cart/corral economy, which stays exterior. GameScene
+// owns the pool's lifecycle: see buildInteriorPeds()/updateInteriorPeds()/
 // clearInteriorPeds() in GameScene.js.
 class StorePed {
   constructor(scene) {
@@ -30,22 +33,47 @@ class StorePed {
 
     this.speed = 46;
     this.pauseUntil = 0;
+    this.waypoints = [];
     this.pickAisleGoal();
   }
 
   pickAisleGoal() {
     const lanes = CFG.interior.aisleLaneX;
     const { top, bottom } = CFG.interior.aisleY;
-    this.goal = {
+    this.state = 'aisle';
+    this.setRoute({
       x: Phaser.Utils.Array.GetRandom(lanes),
       y: Math.random() < 0.5 ? top : bottom,
-    };
-    this.state = 'aisle';
+    });
   }
 
   pickCheckout() {
-    this.goal = Phaser.Utils.Array.GetRandom(CFG.interior.vestibule.checkout);
     this.state = 'checkout';
+    this.setRoute(Phaser.Utils.Array.GetRandom(CFG.interior.vestibule.checkout));
+  }
+
+  // Lays out a straight-leg route to `goal` that never cuts diagonally
+  // through a shelf. The shelf band is CFG.interior.aisles' y-extent; a
+  // shopper only ever crosses between lanes while standing on a row outside
+  // it, so: step clear of the band vertically first if standing inside it,
+  // then travel to the target lane while still on that safe row, then
+  // finish with a straight vertical walk up the new lane to the goal.
+  setRoute(goal) {
+    const a = CFG.interior.aisles[0];
+    const bandTop = a.y;
+    const bandBottom = a.y + a.h;
+    const path = [];
+    let fromY = this.y;
+
+    if (fromY > bandTop && fromY < bandBottom) {
+      fromY = fromY - bandTop < bandBottom - fromY ? bandTop : bandBottom;
+      path.push({ x: this.x, y: fromY });
+    }
+    if (Math.abs(goal.x - this.x) > 1) path.push({ x: goal.x, y: fromY });
+    path.push(goal);
+
+    this.waypoints = path;
+    this.goal = this.waypoints.shift();
   }
 
   update(now) {
@@ -53,7 +81,16 @@ class StorePed {
 
     const d = Phaser.Math.Distance.Between(this.x, this.y, this.goal.x, this.goal.y);
     if (d < 14) {
-      this.arrived(now);
+      // Snap exactly onto the waypoint just reached — an intermediate leg's
+      // arrival tolerance would otherwise leave a few px of drift on the row
+      // a following horizontal leg relies on being clear of every shelf.
+      this.x = this.goal.x;
+      this.y = this.goal.y;
+      if (this.waypoints.length) {
+        this.goal = this.waypoints.shift();
+      } else {
+        this.arrived(now);
+      }
       return;
     }
 

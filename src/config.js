@@ -330,6 +330,8 @@ const CFG = {
     hvac: 0x2a313a,
     skylight: 0x46525f,
     doors: 0x2c4f3d,
+    doorGlass: 0x9fd6e6,
+    wallTrim: 0x5c6673,
     canopy: 0x9d3a33,
     canopyPost: 0x6e2a25,
     dockPad: 0x2a2f36,

@@ -37,6 +37,7 @@ class GameScene extends Phaser.Scene {
     this.drawLot();
     this.buildScenery();
     this.buildInterior();
+    this.buildDoors();
     this.buildCorrals();
     this.buildTraffic();
     this.buildPeds();
@@ -293,11 +294,12 @@ class GameScene extends Phaser.Scene {
       g.fillRect(x + 40, s.y + s.h - 230, 66, 44);
     }
 
-    // parapet along the front, then the storefront face below it
+    // parapet along the front, then the storefront face below it. The doors
+    // themselves are separate animated objects — see buildDoors().
     g.fillStyle(c.storeTrim, 1);
     g.fillRect(s.x, s.y + s.h - 26, s.w, 26);
     g.fillStyle(c.doors, 1);
-    CFG.doors.forEach((d) => g.fillRect(d.x - d.w / 2, s.y + s.h - 22, d.w, 18));
+    CFG.doors.forEach((d) => g.fillRect(d.x - d.w / 2 - 6, s.y + s.h - 24, d.w + 12, 22));
 
     const signY = s.y + s.h - 76;
     [CFG.doors[0].x + 60, CFG.doors[1].x + 500].forEach((x) => {
@@ -326,6 +328,76 @@ class GameScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setDepth(15)
     );
+  }
+
+  // The entry doors: two glass panels per doorway that slide apart when
+  // anyone is near the threshold and slide shut behind them — see
+  // updateDoors(). Each doorway gets a matching pair on the storefront face
+  // (pushed onto storeRoof, so they hide the same way the rest of the front
+  // does for a camera whose player is already inside) and a second pair
+  // just inside, on the vestibule floor, since that's the only side an
+  // attendant standing in the store actually sees. Both pairs animate
+  // together — it is the same physical door, seen from either face.
+  buildDoors() {
+    this.doorGates = CFG.doors.map((d) => ({ def: d, open: false, panels: [] }));
+    this.buildFrontDoorPanels();
+    this.buildVestibuleDoorPanels();
+  }
+
+  buildFrontDoorPanels() {
+    const c = CFG.colors;
+    const s = CFG.store;
+    const y = s.y + s.h - 13;
+    this.addDoorPanels(y, 15, this.storeRoof, c.doorGlass);
+  }
+
+  buildVestibuleDoorPanels() {
+    const c = CFG.colors;
+    const y = CFG.interior.floor.y2 - 9;
+    this.addDoorPanels(y, 2, null, c.doorGlass);
+  }
+
+  // Lays down one sliding-glass pair per doorway at height `y`/depth
+  // `depth`, wiring each panel into its door's gate record so
+  // updateDoors() can tween them. `hideWith`, if given, is the array (e.g.
+  // storeRoof) the panel gets pushed onto so it hides along with it.
+  addDoorPanels(y, depth, hideWith, color) {
+    const h = 18;
+    this.doorGates.forEach((gate) => {
+      const d = gate.def;
+      const half = d.w / 2;
+      [-1, 1].forEach((side) => {
+        const base = d.x + (side * half) / 2;
+        const panel = this.add.rectangle(base, y, half - 2, h, color, 0.85).setDepth(depth);
+        if (hideWith) hideWith.push(panel);
+        gate.panels.push({ obj: panel, base, dir: side });
+      });
+    });
+  }
+
+  // Slides every doorway's panels open when a player is near its threshold
+  // on either side, shut again once everyone's clear.
+  updateDoors() {
+    if (!this.doorGates) return;
+    this.doorGates.forEach((gate) => {
+      const d = gate.def;
+      const near = this.players.some(
+        (p) =>
+          p.alive &&
+          Math.abs(p.x - d.x) < d.w / 2 + 60 &&
+          Math.abs(p.y - CFG.sidewalk.y) < 170
+      );
+      if (near === gate.open) return;
+      gate.open = near;
+      gate.panels.forEach((panel) => {
+        this.tweens.add({
+          targets: panel.obj,
+          x: panel.base + (near ? panel.dir * (d.w / 2) : 0),
+          duration: 320,
+          ease: 'Sine.easeInOut',
+        });
+      });
+    });
   }
 
   // Red entry canopy over the west end of the storefront. It is a roof that
@@ -514,27 +586,67 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  // Just inside the doors: a few checkout counters (interior shoppers queue
-  // here) and the new cart return — see drawInteriorDropZone().
+  // Just inside the doors: a row of real checkout lanes (interior shoppers
+  // queue here) and the new cart return — see drawInteriorDropZone().
   buildVestibule(g) {
-    CFG.interior.vestibule.checkout.forEach((c) => {
-      g.fillStyle(0x454c56, 1);
-      g.fillRect(c.x - 45, c.y - 14, 90, 28);
-      g.fillStyle(0x2c3138, 1);
-      g.fillRect(c.x - 45, c.y - 14, 90, 6);
-    });
+    CFG.interior.vestibule.checkout.forEach((c, i) => this.buildCheckoutLane(g, c, i + 1));
     this.drawInteriorDropZone();
   }
 
-  // The staff break room: a walled-off room with a doorway gap on its south
+  // One checkout lane: a belt feeding down from the aisles, low rails either
+  // side to queue shoppers into it, a counter with a register and a bagging
+  // shelf, and an overhead lane number — the pieces a real front-end lane is
+  // built from, in place of the old bare rectangle.
+  buildCheckoutLane(g, c, num) {
+    const laneW = 74;
+    const beltH = 66;
+    const beltY = c.y - beltH - 6;
+
+    g.fillStyle(0x30353c, 1);
+    [c.x - laneW / 2, c.x + laneW / 2].forEach((x) => g.fillRect(x - 3, beltY, 6, beltH + 34));
+
+    g.fillStyle(0x1e2126, 1);
+    g.fillRect(c.x - laneW / 2 + 6, beltY, laneW - 12, beltH);
+    g.fillStyle(0x565f6a, 1);
+    for (let y = beltY + 6; y < beltY + beltH - 4; y += 12) {
+      g.fillRect(c.x - laneW / 2 + 10, y, laneW - 20, 5); // belt tread
+    }
+
+    g.fillStyle(0x454c56, 1);
+    g.fillRect(c.x - 45, c.y - 14, 90, 28); // worktop
+    g.fillStyle(0x2c3138, 1);
+    g.fillRect(c.x - 45, c.y - 14, 90, 6);
+    g.fillStyle(0x1c2026, 1);
+    g.fillRect(c.x - 40, c.y - 10, 20, 20); // register housing
+    g.fillStyle(CFG.colors.doorGlass, 0.85);
+    g.fillRect(c.x - 37, c.y - 7, 14, 10); // screen glow
+    g.fillStyle(0x39424c, 1);
+    g.fillRect(c.x + 18, c.y - 10, 24, 20); // bagging shelf
+
+    g.fillStyle(CFG.colors.signBlue, 1);
+    g.fillRoundedRect(c.x - 14, beltY - 24, 28, 18, 3);
+    this.add
+      .text(c.x, beltY - 15, String(num), {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        color: '#e8eef5',
+      })
+      .setOrigin(0.5)
+      .setDepth(2);
+  }
+
+  // The staff break room: a walled-off room with a hinged door on its south
   // wall. This is now the attendant's spawn/respawn point, and walking in
-  // heals a lost life on a cooldown — see updateBreakRoom().
+  // heals a lost life on a cooldown — see updateBreakRoom(). The walls are
+  // drawn at the same thickness as their collision zones below, with the
+  // door itself drawn open — jambs, a swung leaf and its arc of travel, the
+  // usual floor-plan convention — so the gap in the wall reads as a doorway
+  // and not a hole in the room.
   buildBreakRoom(g) {
     const b = CFG.interior.breakRoom;
+    const c = CFG.colors;
     g.fillStyle(0x2b3038, 1);
     g.fillRect(b.x, b.y, b.w, b.h);
-    g.lineStyle(2, 0x4a515c, 0.6);
-    g.strokeRect(b.x, b.y, b.w, b.h);
 
     // table + four chairs, dead centre
     const cx = b.x + b.w / 2;
@@ -558,15 +670,17 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(2);
 
-    // Walls, minus the doorway gap on the south side.
+    // Walls, minus the doorway gap on the south side — drawn solid, at the
+    // same thickness the zones below use, with a lighter cap along the
+    // inner edge so they read as a raised partition rather than a line.
     const t = 10;
     const walls = [
-      { x: b.x + b.w / 2, y: b.y, w: b.w, h: t }, // north
-      { x: b.x, y: b.y + b.h / 2, w: t, h: b.h }, // west
-      { x: b.x + b.w, y: b.y + b.h / 2, w: t, h: b.h }, // east
-      { x: (b.x + b.doorX) / 2, y: b.y + b.h, w: b.doorX - b.x, h: t }, // south, left of the door
+      { x: b.x - t / 2, y: b.y - t / 2, w: b.w + t, h: t }, // north
+      { x: b.x - t / 2, y: b.y, w: t, h: b.h }, // west
+      { x: b.x + b.w, y: b.y, w: t, h: b.h }, // east
+      { x: b.x, y: b.y + b.h, w: b.doorX - b.x, h: t }, // south, left of the door
       {
-        x: (b.doorX + b.doorW + b.x + b.w) / 2,
+        x: b.doorX + b.doorW,
         y: b.y + b.h,
         w: b.x + b.w - (b.doorX + b.doorW),
         h: t,
@@ -574,10 +688,33 @@ class GameScene extends Phaser.Scene {
     ];
     walls.forEach((w) => {
       if (w.w <= 0 || w.h <= 0) return;
-      const zone = this.add.zone(w.x, w.y, w.w, w.h);
+      g.fillStyle(c.storeTrim, 1);
+      g.fillRect(w.x, w.y, w.w, w.h);
+      g.fillStyle(c.wallTrim, 0.5);
+      g.fillRect(w.x, w.y, w.w, 2);
+
+      const zone = this.add.zone(w.x + w.w / 2, w.y + w.h / 2, w.w, w.h);
       this.physics.add.existing(zone, true);
       this.scenery.add(zone);
     });
+
+    // The door itself: jambs at the gap, a leaf swung open into the room and
+    // resting against the inside of the wall, and the quarter-circle arc it
+    // swept through to get there.
+    const hingeX = b.doorX;
+    const hingeY = b.y + b.h;
+    const leafLen = b.doorW - 8;
+    g.fillStyle(0x181b20, 1);
+    g.fillRect(b.doorX - 3, hingeY - 5, 4, 12);
+    g.fillRect(b.doorX + b.doorW - 1, hingeY - 5, 4, 12);
+
+    g.lineStyle(1, c.wallTrim, 0.4);
+    g.beginPath();
+    g.arc(hingeX, hingeY, leafLen, Phaser.Math.DegToRad(180), Phaser.Math.DegToRad(270), false);
+    g.strokePath();
+
+    g.fillStyle(0x6b5636, 1);
+    g.fillRect(hingeX - 2, hingeY - leafLen, 4, leafLen);
   }
 
   buildCorrals() {
@@ -2178,6 +2315,7 @@ class GameScene extends Phaser.Scene {
     this.updatePowerups(time);
     this.updateObstacles(time);
     this.updateInteriorPeds(time);
+    this.updateDoors();
 
     this.players.forEach((p) => {
       p.handleInput(time, dt);
