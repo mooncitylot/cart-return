@@ -2169,6 +2169,7 @@ class GameScene extends Phaser.Scene {
 
     if (this.players.length === 1) {
       main.setViewport(0, 0, V.w, V.h);
+      main.setZoom(CFG.camera.zoom);
       main.startFollow(this.players[0].sprite, true, CFG.camera.lerp, CFG.camera.lerp);
       this.views.push(main);
     } else {
@@ -3189,7 +3190,7 @@ class GameScene extends Phaser.Scene {
   }
 
   buildInteriorPeds() {
-    const n = 7;
+    const n = 6;
     for (let i = 0; i < n; i++) this.interiorPeds.push(new StorePed(this));
   }
 
@@ -4034,9 +4035,16 @@ class GameScene extends Phaser.Scene {
         }
       } else if (this.resolveObstacles(p, time)) {
         // An obstacle caught them; it decides what that costs.
-      } else if (this.hitByPed(p) && !p.forklift && !p.hasEffect('shield', time)) {
-        // Shoppers just bounce off a shield — it only breaks on a motor —
-        // and a shopper in front of a forklift is already on the floor.
+      } else if (
+        p.train.length > 0 &&
+        this.hitByPed(p) &&
+        !p.forklift &&
+        !p.hasEffect('shield', time)
+      ) {
+        // Walking into a shopper empty-handed is just a sidestep; only a
+        // train gets tangled up. Shoppers bounce off a shield — it only
+        // breaks on a motor — and one in front of a forklift is already
+        // on the floor.
         this.bumpedByPed(p, time);
       }
       if (this.gameOver) return;

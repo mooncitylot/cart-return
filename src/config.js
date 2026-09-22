@@ -20,7 +20,8 @@ const CFG = {
   hudHeight: 42,
   camera: {
     lerp: 0.12,
-    splitZoom: 0.82, // two-player halves are narrow, so pull back a little
+    zoom: 1.15, // solo: a little in on the attendant
+    splitZoom: 0.94, // two-player halves are narrow, so pull back a little
     mapW: 300,
     mapH: 232,
   },
@@ -437,7 +438,7 @@ const CFG = {
   },
 
   peds: {
-    count: 34,
+    count: 31,
     speed: 52,
     pauseChance: 0.003, // per-frame chance a pedestrian stops to browse
     reach: 16, // how close counts as having arrived at a waypoint
