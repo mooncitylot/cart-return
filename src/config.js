@@ -91,10 +91,13 @@ const CFG = {
     { axis: 'x', pos: 1886, dir: -1, speed: 130, gap: 660 },
     { axis: 'x', pos: 2204, dir: 1, speed: 140, gap: 620 },
     { axis: 'x', pos: 2522, dir: -1, speed: 150, gap: 720 }, // south perimeter
-    // main drives running the depth of the lot
-    { axis: 'y', pos: 180, dir: -1, speed: 140, gap: 640, from: 1195, to: 2660 },
-    { axis: 'y', pos: 1720, dir: 1, speed: 130, gap: 600, from: 1195, to: 2660 },
-    { axis: 'y', pos: 3220, dir: 1, speed: 145, gap: 660, from: 1195, to: 2660 },
+    // Main drives running the depth of the lot. They stop on the fire lane
+    // rather than at the storefront, and turn onto it: the two outer drives
+    // feed the fire lane, the entrance drive is fed from it. Their far ends run
+    // off the bottom of the map, which is where every car in the lot comes from.
+    { axis: 'y', pos: 180, dir: -1, speed: 140, gap: 640, from: 1250, to: 2660 },
+    { axis: 'y', pos: 1720, dir: 1, speed: 130, gap: 600, from: 1250, to: 2660 },
+    { axis: 'y', pos: 3220, dir: -1, speed: 145, gap: 660, from: 1250, to: 2660 },
   ],
 
   // The store keeps working while you do: shoppers come out of the exit door

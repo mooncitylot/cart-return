@@ -615,12 +615,32 @@ class GameScene extends Phaser.Scene {
   // ---------- traffic ----------
 
   buildTraffic() {
-    this.lanes = CFG.aisles.map((def) => {
-      const lane = { ...def, sprites: [] };
-      this.prefillLane(lane);
-      return lane;
-    });
+    this.lanes = CFG.aisles.map((def) => ({ ...def, sprites: [] }));
+    this.linkTurns();
+    this.lanes.forEach((lane) => this.prefillLane(lane));
     this.buildCrossings();
+  }
+
+  // A drive that dead-ends on the storefront has to conjure its cars out of the
+  // sidewalk. So wherever a lane ends on another lane, the two are joined up:
+  // a car turns off the end of one onto the next, and the only places a car
+  // appears or disappears are the edges of the map.
+  linkTurns() {
+    const meets = (lane, coord) =>
+      this.lanes.find(
+        (l) =>
+          l.axis !== lane.axis &&
+          l.pos === coord &&
+          lane.pos > this.laneFrom(l) &&
+          lane.pos < this.laneTo(l)
+      );
+
+    this.lanes.forEach((lane) => {
+      lane.turnAtFrom = meets(lane, this.laneFrom(lane));
+      lane.turnAtTo = meets(lane, this.laneTo(lane));
+      lane.entryFrom = lane.dir === 1 ? lane.turnAtFrom : lane.turnAtTo;
+      lane.exitTo = lane.dir === 1 ? lane.turnAtTo : lane.turnAtFrom;
+    });
   }
 
   // Each aisle/drive-lane crossing gets its own signal, actuated by cars on the
@@ -635,7 +655,7 @@ class GameScene extends Phaser.Scene {
         this.lanes
           .filter((h) => h.axis === 'x')
           .forEach((hLane) => {
-            if (hLane.pos < this.laneFrom(vLane) || hLane.pos > this.laneTo(vLane)) return;
+            if (hLane.pos <= this.laneFrom(vLane) || hLane.pos >= this.laneTo(vLane)) return;
             const crossing = {
               x: vLane.pos,
               y: hLane.pos,
@@ -662,11 +682,13 @@ class GameScene extends Phaser.Scene {
     return lane.axis === 'x' ? CFG.width : CFG.height;
   }
 
+  // An end that is a turn starts flush with the junction; an end that is the
+  // map edge starts a car's length beyond it, already rolling in.
   prefillLane(lane) {
-    const from = this.laneFrom(lane);
-    const to = this.laneTo(lane);
+    const from = this.laneFrom(lane) - (lane.turnAtFrom ? 0 : 100);
+    const to = this.laneTo(lane) + (lane.turnAtTo ? 0 : 100);
     const start = Phaser.Math.Between(0, lane.gap);
-    for (let c = from - 100 + start; c < to + 100; c += lane.gap) {
+    for (let c = from + start; c < to; c += lane.gap) {
       this.spawnVehicle(lane, c);
     }
   }
@@ -770,6 +792,21 @@ class GameScene extends Phaser.Scene {
     );
     if (roadAheadOccupied) return true;
 
+    // Coming up on the end of a lane that turns onto another, hold at the
+    // give-way line until there is a gap in the traffic being joined.
+    if (lane.exitTo) {
+      const mark = lane.dir === 1 ? this.laneTo(lane) : this.laneFrom(lane);
+      const lead = vertical
+        ? lane.dir === 1
+          ? b.bottom
+          : b.top
+        : lane.dir === 1
+          ? b.right
+          : b.left;
+      const toMark = (mark - lead) * lane.dir;
+      if (toMark > 0 && toMark < 140 && !this.turnGapClear(lane, lane.exitTo)) return true;
+    }
+
     // Stop only for the crossing this car is actually running into, and only
     // while that crossing is not showing green for this direction of travel.
     return this.crossings.some((c) => {
@@ -784,19 +821,83 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  // The stretch of the joined lane a turning car needs to itself: the junction
+  // box, plus the headway upstream of it.
+  turnGapClear(lane, next) {
+    const half = CFG.laneWidth / 2;
+    const head = 210;
+    const x = next.axis === 'x' ? lane.pos : next.pos;
+    const y = next.axis === 'x' ? next.pos : lane.pos;
+    const box =
+      next.axis === 'x'
+        ? new Phaser.Geom.Rectangle(
+            next.dir === 1 ? x - head : x - half,
+            y - half,
+            head + half,
+            CFG.laneWidth
+          )
+        : new Phaser.Geom.Rectangle(
+            x - half,
+            next.dir === 1 ? y - head : y - half,
+            CFG.laneWidth,
+            head + half
+          );
+    return !next.sprites.some((o) =>
+      Phaser.Geom.Intersects.RectangleToRectangle(box, o.getBounds())
+    );
+  }
+
+  // Did this step carry the car over `mark`, travelling the lane's way?
+  passed(lane, was, now, mark) {
+    return lane.dir === 1 ? was < mark && now >= mark : was > mark && now <= mark;
+  }
+
+  // Hand a car to `next`, sitting it in the junction the two lanes share and
+  // squaring it up to its new direction of travel.
+  turnOnto(sprite, lane, next) {
+    sprite.setPosition(
+      next.axis === 'x' ? lane.pos : next.pos,
+      next.axis === 'x' ? next.pos : lane.pos
+    );
+    if (next.axis === 'x') sprite.setAngle(0).setFlipX(next.dir === -1);
+    else sprite.setAngle(next.dir === 1 ? 90 : -90).setFlipX(false);
+    next.sprites.push(sprite);
+  }
+
   updateLane(lane, dt) {
     const v = lane.dir * lane.speed * this.speedMul * dt;
     const from = this.laneFrom(lane);
     const to = this.laneTo(lane);
+    const exit = lane.dir === 1 ? to : from;
 
     for (let i = lane.sprites.length - 1; i >= 0; i--) {
       const s = lane.sprites[i];
+      const was = lane.axis === 'x' ? s.x : s.y;
       if (!this.mustYield(s, lane)) {
         if (lane.axis === 'x') s.x += v;
         else s.y += v;
       }
 
       const coord = lane.axis === 'x' ? s.x : s.y;
+
+      // Off the end of this lane and onto the one it runs into...
+      if (lane.exitTo && this.passed(lane, was, coord, exit)) {
+        lane.sprites.splice(i, 1);
+        this.turnOnto(s, lane, lane.exitTo);
+        continue;
+      }
+
+      // ...or off it partway along, into a drive waiting to be fed from here.
+      const wanting = this.lanes.find(
+        (l) => l.entryFrom === lane && l.wantsCar && this.passed(lane, was, coord, l.pos)
+      );
+      if (wanting) {
+        lane.sprites.splice(i, 1);
+        wanting.wantsCar = false;
+        this.turnOnto(s, lane, wanting);
+        continue;
+      }
+
       // Despawn well outside the spawn edge, so a fresh car is never culled
       // on its first frame. Texture length always runs along travel.
       const margin = s.width / 2 + 60;
@@ -806,18 +907,18 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    const spawnAt = lane.dir === 1 ? from - 90 : to + 90;
-    if (lane.sprites.length === 0) {
-      this.spawnVehicle(lane, spawnAt);
-      return;
-    }
-
     const coords = lane.sprites.map((s) => (lane.axis === 'x' ? s.x : s.y));
-    if (lane.dir === 1) {
-      if (Math.min(...coords) >= from + lane.gap - 90) this.spawnVehicle(lane, spawnAt);
-    } else if (Math.max(...coords) <= to + 90 - lane.gap) {
-      this.spawnVehicle(lane, spawnAt);
-    }
+    const room =
+      coords.length === 0 ||
+      (lane.dir === 1
+        ? Math.min(...coords) >= from + lane.gap - 90
+        : Math.max(...coords) <= to + 90 - lane.gap);
+    if (!room) return;
+
+    // A lane fed by a turn never conjures a car of its own: it puts its hand up
+    // and takes the next one off the lane that feeds it.
+    if (lane.entryFrom) lane.wantsCar = true;
+    else this.spawnVehicle(lane, lane.dir === 1 ? from - 90 : to + 90);
   }
 
   // ---------- pedestrians ----------
