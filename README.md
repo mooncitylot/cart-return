@@ -98,6 +98,9 @@ whenever it hits something.
   corral. Three lives.
 - Pedestrians don't kill you, but a collision stuns you and scatters your train
   across the asphalt, where you have to collect it again.
+- **Angry coworkers come looking for you.** They cost no lives, but they will
+  walk straight through a loaded attendant and leave the train everywhere. See
+  below.
 - **Shoppers tidy up after you.** A cart left loose anywhere that isn't a corral
   is fair game: a passing shopper will walk over, take it, and push it back to
   the nearest corral, which becomes that cart's new home. So a train you drop
@@ -116,6 +119,41 @@ whenever it hits something.
 - Score: 120 per cart, +40 for each cart beyond the first in one delivery, 600 per
   lot cleared plus 4 per second remaining, 60 for a power-up.
 
+### Obstacles
+
+Obstacles are the lot's moving hazards, as opposed to the scenery — parked cars
+and planters — which simply sits there and stops you. There is one kind so far.
+
+**Angry coworkers** are sore about being left on the tills while you get the
+fresh air. They mooch around the rows at walking pace until they spot an
+attendant hauling carts, then put their head down and come straight at you at
+nearly cart-free running speed. Walk into one and you are shoved: the whole
+train scatters across the asphalt and you spend most of a second picking
+yourself up, which out in a live aisle is a problem of its own. No life is lost
+— they are a nuisance, not traffic.
+
+What makes them readable:
+
+- They only hunt an attendant who is **actually pushing carts**. Empty-handed,
+  you are beneath their notice, so the rule reads back as: don't get caught out
+  in the open with a full train.
+- They notice you within 340px and give up once you are 640px clear.
+- Only a coworker mid-charge costs you anything: brushing past one who is
+  sulking between targets, or standing over a spill, does nothing. Every shove
+  follows a charge you were shown coming.
+- A hunting one shows a red `!` over their head and a lit ring under their feet;
+  a sulking one's ring is dull. On the minimap they are hollow red rings,
+  brighter while they are coming for you.
+- After a hit they stand and gloat for a second and a half, then leave everyone
+  alone for another two and a half, so a stunned attendant is never hit twice
+  before they can move.
+- A **shield** turns one away without breaking — it only breaks on a motor. They
+  charge anyway and bounce off you, and sit on the asphalt for a moment, so the
+  badge is worth having out in the rows even when there is no car near you.
+- In versus, the rider can flatten one — and pays the same 150 as for a shopper.
+
+Two of them work the first lot and one more joins each lot after, up to six.
+
 ### Power-ups
 
 Badges drop into the lot every 13-22 seconds, up to three on the ground at once,
@@ -128,7 +166,7 @@ detour. They show on the minimap in their own colour.
 
 | Badge | | Runs for | |
 | --- | --- | --- | --- |
-| **Shield** | blue, shield icon | 9s | Eats one hit from anything with a motor, then breaks: you keep the life and the cart train, and get a moment of grace so the same car can't clip you twice. For its whole duration shoppers just bounce off you. In versus it refuses the rider's takedown outright — no points for them — and spills them the way hitting anything else does. |
+| **Shield** | blue, shield icon | 9s | Eats one hit from anything with a motor, then breaks: you keep the life and the cart train, and get a moment of grace so the same car can't clip you twice. For its whole duration shoppers and angry coworkers just bounce off you. In versus it refuses the rider's takedown outright — no points for them — and spills them the way hitting anything else does. |
 | **Speed** | amber, lightning icon | 8s | Top speed x1.55. It scales the floor as well as the ceiling, so it is still worth having when you are dragging a full train. |
 | **Strength** | purple, dumbbell icon | 13s | Push 14 carts instead of 8, and each one costs you only 30% of the usual speed penalty. It gates new pickups only: a long train gathered under it keeps following once it lapses. |
 
@@ -180,6 +218,7 @@ index.html          page shell + script tags (classic scripts, so file:// works)
 style.css           page chrome; CSS scales the canvas to the window, and styles the touch sticks
 src/config.js       CFG: lot geometry, lanes, signals, player/cart/ped/power-up tuning, scoring
 src/powerup.js      Powerup: one badge on the ground — its kind, its timer, its pulse
+src/obstacle.js     Obstacle + the kinds registered on it: the lot's moving hazards (angry coworkers)
 src/touch.js        TouchControls: the on-screen sticks and buttons, a DOM layer over the canvas
 src/player.js       LotPlayer: one attendant's sprite, keys, cart train, lives, score, effects
 src/moped.js        MopedPlayer: the versus rider — a LotPlayer that rides instead of pushes
@@ -187,7 +226,7 @@ src/main.js         Phaser.Game boot (arcade physics)
 src/scenes/
   BootScene.js      generates every texture procedurally (placeholder art lives here)
   MenuScene.js      title + solo / co-op / versus select
-  GameScene.js      lot rendering, cameras + minimap, traffic + signals, peds, carts, scoring
+  GameScene.js      lot rendering, cameras + minimap, traffic + signals, peds, obstacles, carts, scoring
   HudScene.js       per-player score / lives / train, cart counter, timer band, end card
 vendor/phaser.min.js
 assets/             drop real sprites here when they exist
@@ -204,6 +243,8 @@ with a `this.load.image(key, 'assets/…')` in a `preload()` and keep the keys:
 - `cart`
 - `power_shield`, `power_speed`, `power_strength` — power-up badges, drawn
   upright (they are never rotated to a heading); one per `CFG.powerups.kinds` row
+- `obs_coworker` — obstacles, drawn facing right like the shoppers (rotated to
+  heading); one per `CFG.obstacles.kinds` row
 - `parked_0`…`parked_5` — parked cars, drawn pointing up
 - `traffic_<body>_<paint>` — sedan / hatch / suv / van / truck in 8 paints, drawn
   pointing right; the scene flips or rotates them per lane
@@ -217,8 +258,8 @@ from, so adding or removing art means editing those arrays and nothing else.
 gap = sparser traffic), `fields` and `stallRows` and `parkedFill`, corral positions
 and cart counts, `lights` timings, `peds.count`, player speed and the per-cart
 speed penalty, `levelSeconds`, `levelQuota`, `lives`, `levelSpeedStep`, the
-`moped` block (hit radius, stun lengths, spawn), the `restock` and `powerups`
-blocks and the score table.
+`moped` block (hit radius, stun lengths, spawn), the `restock`, `powerups` and
+`obstacles` blocks and the score table.
 
 Two scales live in there and it matters which one you are editing:
 
@@ -256,6 +297,17 @@ shield costs the attendant who spends one (`shieldStunMs`, `shieldGraceMs`), and
 colours and its own numbers (`mul` for speed, `extraTrain`/`cartEase` for
 strength). Adding a fourth kind means a row there, an icon in
 `BootScene.makePowerup()`, and a branch in `LotPlayer` for what it does.
+
+`obstacles` sets the lot's moving hazards: `minPlayerDist` keeps a spawn out of
+an attendant's lap, and `kinds` holds one row per hazard — for the coworker, how
+many work the first lot (`count`, `perLevel`, `max`), how fast they mooch and how
+fast they charge (`speed`, `chargeSpeed`), how far off they notice you and how
+far you have to get to shake them (`aggroRange`, `loseRange`), the size of the
+train that makes you worth chasing (`minTrain`), and what a hit costs
+(`hitRadius`, `stunMs`, `graceMs`, `gloatMs`, `cooldownMs`). Adding a second kind
+means a row there, an icon in `BootScene.makeObstacle()`, and a class in
+`src/obstacle.js` registered under the same key — `GameScene` never names a kind
+itself, so nothing in the scene changes.
 
 `camera` tunes the follow lerp, the zoom used for split-screen halves, and the
 minimap size. The mode is chosen at the title screen and read from the registry

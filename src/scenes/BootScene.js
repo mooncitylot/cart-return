@@ -26,6 +26,7 @@ class BootScene extends Phaser.Scene {
     this.makeCart();
     this.makeMoped();
     CFG.powerups.kinds.forEach((k) => this.makePowerup(`power_${k.key}`, k));
+    CFG.obstacles.kinds.forEach((k) => this.makeObstacle(`obs_${k.key}`, k));
 
     // Parked cars point up (nose-in stalls); traffic points right.
     BootScene.PARKED_KEYS = [0xb44a4a, 0x4a72b4, 0xb49a4a, 0x5aa07a, 0x8a8f96, 0xa86bc4].map(
@@ -171,6 +172,30 @@ class BootScene extends Phaser.Scene {
     }
 
     g.generateTexture(key, s, s);
+    g.destroy();
+  }
+
+  // One obstacle kind, drawn facing right like everyone else on foot. The
+  // coworker keeps the shopper silhouette so the lot reads as one world, with a
+  // grey work shirt and a vest in the kind's colour marking them out as staff.
+  makeObstacle(key, def) {
+    const w = 30;
+    const h = 26;
+    const g = this.gfx();
+
+    g.fillStyle(0x4a515a, 1); // work shirt
+    g.fillRoundedRect(2, 3, w - 9, h - 6, 7);
+    g.fillStyle(def.color, 1); // vest over the shoulders, arms out front
+    g.fillRect(4, 4, w - 14, 5);
+    g.fillRect(4, h - 9, w - 14, 5);
+    g.fillRect(w - 13, 1, 11, 5);
+    g.fillRect(w - 13, h - 6, 11, 5);
+    g.fillStyle(0xf0d9b5, 1); // head
+    g.fillCircle(w - 12, h / 2, 7);
+    g.fillStyle(0x241d18, 1); // hair behind the face, so the facing reads
+    g.fillCircle(w - 15, h / 2, 5.5);
+
+    g.generateTexture(key, w, h);
     g.destroy();
   }
 

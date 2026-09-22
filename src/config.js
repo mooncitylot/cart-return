@@ -191,6 +191,40 @@ const CFG = {
     ],
   },
 
+  // Obstacles: the lot's living hazards, as opposed to the scenery you simply
+  // walk into. Each kind is a row here plus a class registered under the same
+  // key in src/obstacle.js and an icon in BootScene.makeObstacle(); the scene
+  // spawns whatever is listed and never names a kind itself.
+  obstacles: {
+    minPlayerDist: 520, // nothing ever appears in an attendant's lap
+    kinds: [
+      // Angry coworkers. Sore about being left the tills while you get the
+      // fresh air, they wander the rows until they spot an attendant hauling a
+      // train, then walk straight through them and leave the carts everywhere.
+      {
+        key: 'coworker',
+        label: 'COWORKER',
+        color: 0xd9543f,
+        text: '#f09c86',
+        count: 2, // on the lot for the first one
+        perLevel: 1, // and one more every lot after
+        max: 6,
+        speed: 64, // the sulk between targets
+        chargeSpeed: 195, // and the run-up once they have picked one
+        aggroRange: 340, // how far off they notice a loaded attendant
+        loseRange: 640, // and how far you have to get to shake them
+        minTrain: 1, // an empty-handed attendant is not worth the walk
+        hitRadius: 24,
+        stunMs: 850, // how long the shove leaves you standing there
+        graceMs: 250, // added to the stun before anything else can touch you
+        gloatMs: 1500, // they stand over the spill admiring the mess
+        cooldownMs: 2600, // before anyone is worth bumping into again
+        dodgeMs: 450, // sidestep when a parked car gets between them and you
+        knockback: 26, // px a shield throws them back
+      },
+    ],
+  },
+
   peds: {
     count: 34,
     speed: 52,

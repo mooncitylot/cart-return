@@ -33,11 +33,12 @@ class GameScene extends Phaser.Scene {
 
     this.buildIslands();
     this.drawLot();
-    this.buildObstacles();
+    this.buildScenery();
     this.buildCorrals();
     this.buildTraffic();
     this.buildPeds();
     this.createPlayers();
+    this.buildObstacles();
     this.buildPowerups();
     this.buildRestock();
     this.setupCameras();
@@ -416,14 +417,15 @@ class GameScene extends Phaser.Scene {
       .setDepth(2);
   }
 
-  // Parked cars and the planters: the things the player physically bumps into.
-  buildObstacles() {
-    this.obstacles = this.physics.add.staticGroup();
+  // Parked cars and the planters: the scenery everyone physically bumps into.
+  // The moving hazards are a separate system — see buildObstacles().
+  buildScenery() {
+    this.scenery = this.physics.add.staticGroup();
 
     this.islands.forEach((i) => {
       const zone = this.add.zone(i.x + i.w / 2, i.y + i.h / 2, i.w - 6, i.h - 6);
       this.physics.add.existing(zone, true);
-      this.obstacles.add(zone);
+      this.scenery.add(zone);
     });
 
     this.parked = [];
@@ -443,7 +445,7 @@ class GameScene extends Phaser.Scene {
           // Nose-out rows are flipped, not rotated: a static body reads its
           // extent from the rotated top-left corner, so an angled sprite
           // leaves its collision box offset from the car you can see.
-          const car = this.obstacles
+          const car = this.scenery
             .create(x, cy, Phaser.Utils.Array.GetRandom(BootScene.PARKED_KEYS))
             .setDepth(3)
             .setFlipY(rowIndex % 2 === 1);
@@ -593,6 +595,12 @@ class GameScene extends Phaser.Scene {
       g.fillCircle(pu.x, pu.y, 38);
       g.fillStyle(pu.def.color, 1);
       g.fillCircle(pu.x, pu.y, 28);
+    });
+
+    // Hazards read as hollow rings, so they never look like a cart or a badge.
+    this.obstacles.forEach((ob) => {
+      g.lineStyle(14, ob.def.color, ob.alerted() ? 1 : 0.55);
+      g.strokeCircle(ob.x, ob.y, 30);
     });
 
     this.players.forEach((p) => {
@@ -817,7 +825,7 @@ class GameScene extends Phaser.Scene {
   buildPeds() {
     this.peds = this.physics.add.group();
     for (let i = 0; i < CFG.peds.count; i++) this.spawnPed();
-    this.physics.add.collider(this.peds, this.obstacles, (ped) => this.unstick(ped));
+    this.physics.add.collider(this.peds, this.scenery, (ped) => this.unstick(ped));
   }
 
   // `at` places them somewhere specific — the store doorway, for a shopper the
@@ -1270,7 +1278,7 @@ class GameScene extends Phaser.Scene {
       );
     }
 
-    this.players.forEach((p) => this.physics.add.collider(p.sprite, this.obstacles));
+    this.players.forEach((p) => this.physics.add.collider(p.sprite, this.scenery));
     this.driver = this.players.find((p) => p.kind === 'driver') || null;
   }
 
@@ -1365,6 +1373,81 @@ class GameScene extends Phaser.Scene {
       cart.sprite.setDepth(4).setRotation(0).setPosition(cart.home.x, cart.home.y);
     });
     p.train = [];
+  }
+
+  // ---------- obstacles ----------
+
+  // The lot's moving hazards. Every kind in CFG.obstacles.kinds gets a class
+  // registered in src/obstacle.js and a headcount that grows with the level, so
+  // a second kind is a config row and a class and nothing in here changes.
+  buildObstacles() {
+    this.obstacles = [];
+    CFG.obstacles.kinds.forEach((def) => {
+      const n = Math.min(def.max, def.count + (this.level - 1) * def.perLevel);
+      for (let i = 0; i < n; i++) this.spawnObstacle(def.key);
+    });
+  }
+
+  // Out in the rows or on a walkway, but never close enough to an attendant to
+  // be on top of them before they have seen it.
+  obstacleSpot() {
+    for (let i = 0; i < 24; i++) {
+      const p = Math.random() < 0.5 ? this.randomLotPoint() : this.randomWalkPoint();
+      if (this.inIsland(p.x, p.y) || this.inCorral(p.x, p.y)) continue;
+      const near = this.activeAttendants().some(
+        (a) => Phaser.Math.Distance.Between(a.x, a.y, p.x, p.y) < CFG.obstacles.minPlayerDist
+      );
+      if (near) continue;
+      return p;
+    }
+    return null;
+  }
+
+  spawnObstacle(key) {
+    const spot = this.obstacleSpot();
+    if (!spot) return null;
+    const ob = Obstacle.create(this, key, spot.x, spot.y);
+    if (ob) this.obstacles.push(ob);
+    return ob;
+  }
+
+  updateObstacles(now) {
+    this.obstacles.forEach((ob) => ob.update(now));
+  }
+
+  clearObstacles() {
+    this.obstacles.forEach((ob) => ob.destroy());
+    this.obstacles = [];
+  }
+
+  // Did anything living catch this attendant? A shield bounces a coworker off
+  // without breaking — it takes a motor to burn one of those.
+  resolveObstacles(p, now) {
+    const ob = this.obstacles.find((o) => o.catches(p));
+    if (!ob) return false;
+
+    if (p.hasEffect('shield', now)) {
+      ob.recoil(p.x, p.y, ob.def.knockback, ob.def.gloatMs);
+      this.banner(p.x, p.y, 'BOUNCED', Powerup.def('shield').text);
+      return true;
+    }
+    this.shovedBy(p, ob, now);
+    ob.landedHit(now);
+    return true;
+  }
+
+  // Walked into by an angry coworker. No life lost — they are a nuisance, not
+  // traffic — but the train goes everywhere and you spend a moment picking
+  // yourself up, which out in a live aisle is its own problem.
+  shovedBy(p, ob, now) {
+    const dropped = p.train.length;
+    p.stunUntil = now + ob.def.stunMs;
+    p.invulnUntil = now + ob.def.stunMs + ob.def.graceMs;
+    p.sprite.body.setVelocity(0, 0);
+    this.dropTrain(p);
+    this.flash(ob.def.color);
+    this.banner(p.x, p.y, dropped > 1 ? `${dropped} CARTS LOOSE` : 'WATCH IT', ob.def.text);
+    this.publish();
   }
 
   // ---------- power-ups ----------
@@ -1546,6 +1629,21 @@ class GameScene extends Phaser.Scene {
       this.retarget(hitPed);
       this.banner(car.x, car.y, `-${CFG.score.pedPenalty} SHOPPER`, '#e6c06a');
       this.publish();
+      return;
+    }
+
+    // Staff are people too: flattening one pays the same as a shopper, and
+    // leaves them sitting on the asphalt for a moment.
+    const hitOb = this.obstacles.find(
+      (ob) => Phaser.Math.Distance.Between(ob.x, ob.y, car.x, car.y) < CFG.moped.hitRadius
+    );
+    if (hitOb) {
+      car.score -= CFG.score.pedPenalty;
+      car.spinOut(now, CFG.moped.stunOnPed);
+      car.invulnUntil = now + CFG.moped.stunOnPed + CFG.moped.crashImmuneMs;
+      hitOb.recoil(car.x, car.y, hitOb.def.knockback, hitOb.def.gloatMs);
+      this.banner(car.x, car.y, `-${CFG.score.pedPenalty} ${hitOb.def.label}`, '#e6c06a');
+      this.publish();
     }
   }
 
@@ -1625,6 +1723,10 @@ class GameScene extends Phaser.Scene {
     this.pedTarget += 1;
     this.spawnPed();
     this.buildRestock();
+
+    // A fresh crew for the new lot, one head bigger than the last.
+    this.clearObstacles();
+    this.buildObstacles();
 
     // Badges and effects do not carry across lots.
     this.powerups.forEach((pu) => pu.destroy());
@@ -1728,6 +1830,7 @@ class GameScene extends Phaser.Scene {
     this.updatePeds(time);
     this.updateRestock(time);
     this.updatePowerups(time);
+    this.updateObstacles(time);
 
     this.players.forEach((p) => {
       p.handleInput(time, dt);
@@ -1777,6 +1880,8 @@ class GameScene extends Phaser.Scene {
         } else {
           this.rundown(this.driver, p, time);
         }
+      } else if (this.resolveObstacles(p, time)) {
+        // An obstacle caught them; it decides what that costs.
       } else if (this.hitByPed(p) && !p.hasEffect('shield', time)) {
         // Shoppers just bounce off a shield — it only breaks on a motor.
         this.bumpedByPed(p, time);
