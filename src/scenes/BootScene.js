@@ -7,9 +7,11 @@ class BootScene extends Phaser.Scene {
   }
 
   create() {
-    // Players and pedestrians share one drawing, recoloured per person.
-    this.makeShopper('player_1', { coat: 0x2f8f74, sleeve: 0x1f6b56, hair: 0x3a2f28 });
-    this.makeShopper('player_2', { coat: 0xe08a3c, sleeve: 0xb96c26, hair: 0x2b2118 });
+    // Players are on the clock, so they wear the same staff silhouette as
+    // the cashiers and the obstacle coworkers — a customer's plain coat
+    // would leave nothing marking an attendant as store staff at a glance.
+    this.makeStaff('player_1', 0x2f8f74);
+    this.makeStaff('player_2', 0xe08a3c);
     BootScene.PED_KEYS = [
       { coat: 0x9b6bd6, sleeve: 0x7a4fb0, hair: 0x2b2b33 },
       { coat: 0xd67b6b, sleeve: 0xb05a4a, hair: 0x6b4a2f },
@@ -23,10 +25,7 @@ class BootScene extends Phaser.Scene {
       return key;
     });
 
-    // Checkout cashiers: the same grey-shirt-and-vest silhouette an obstacle
-    // coworker uses, in a calmer colour — a cashier never chases anyone, so
-    // there's nothing to confuse it with out in the lot.
-    this.makeObstacle('employee', { color: 0x3c6ea8 });
+    this.makeStaff('employee', 0x3c6ea8); // the checkout cashiers
 
     this.makeCart();
     this.makeMoped();
@@ -182,21 +181,24 @@ class BootScene extends Phaser.Scene {
     g.destroy();
   }
 
-  // One obstacle kind, drawn facing right like everyone else on foot. The
-  // coworker keeps the shopper silhouette so the lot reads as one world, with a
-  // grey work shirt and a vest in the kind's colour marking them out as staff.
-  makeObstacle(key, def) {
+  // Anyone who works at the store — an obstacle coworker, a checkout
+  // cashier, an attendant player — shares this silhouette: a grey work
+  // shirt, a vest in their own colour, and a name badge, so any of them
+  // reads as staff at a glance next to a customer's plain coat.
+  makeStaff(key, vestColor) {
     const w = 30;
     const h = 26;
     const g = this.gfx();
 
     g.fillStyle(0x4a515a, 1); // work shirt
     g.fillRoundedRect(2, 3, w - 9, h - 6, 7);
-    g.fillStyle(def.color, 1); // vest over the shoulders, arms out front
+    g.fillStyle(vestColor, 1); // vest over the shoulders, arms out front
     g.fillRect(4, 4, w - 14, 5);
     g.fillRect(4, h - 9, w - 14, 5);
     g.fillRect(w - 13, 1, 11, 5);
     g.fillRect(w - 13, h - 6, 11, 5);
+    g.fillStyle(0xf3ead9, 1); // name badge, pinned to the vest
+    g.fillRect(6, h / 2 - 2, 5, 4);
     g.fillStyle(0xf0d9b5, 1); // head
     g.fillCircle(w - 12, h / 2, 7);
     g.fillStyle(0x241d18, 1); // hair behind the face, so the facing reads
@@ -204,6 +206,12 @@ class BootScene extends Phaser.Scene {
 
     g.generateTexture(key, w, h);
     g.destroy();
+  }
+
+  // One obstacle kind, drawn facing right like everyone else on foot — see
+  // makeStaff().
+  makeObstacle(key, def) {
+    this.makeStaff(key, def.color);
   }
 
   makeParkedCar(key, color) {
