@@ -45,8 +45,10 @@ how many carts are left standing in the corrals.
 | R      | Restart the lot                          |
 | M      | Back to the mode select                  |
 
-Pickup and delivery are automatic: walk into a cart to take it, walk into the
-CART RETURN zone to hand over everything you are pushing.
+Pickup is automatic out in the lot: walk into a loose cart to take it. Delivery
+happens inside the store now — push your train through either door and hand it
+over at the CART RETURN in the vestibule just inside. See
+[Inside the store](#inside-the-store).
 
 In two-player co-op, the lot is shared but the scoring is not: each player keeps
 their own score, lives and cart train, races the other to the corrals, and can
@@ -95,7 +97,8 @@ whenever it hits something.
   you actually walked, and every extra cart costs you top speed. The haul back to
   the store is long, so it is nearly always worth filling the train first.
 - Traffic kills: you lose a life, and the carts you were pushing go back to their
-  corral. Three lives.
+  corral. Three lives. You come back — and start the shift — in the break room;
+  see [Inside the store](#inside-the-store).
 - Pedestrians don't kill you, but a collision stuns you and scatters your train
   across the asphalt, where you have to collect it again.
 - **Angry coworkers come looking for you.** They cost no lives, but they will
@@ -183,9 +186,10 @@ several screens across.
 Along the north edge: the store itself, one long windowless box with roof
 skylights and HVAC packs, a red entry canopy over the west end of the storefront,
 a receiving yard of trailer docks behind the west wall, and a tyre-centre annex
-off the east end. All of that is outside the physics world — the walkable lot is
-the pavement in front of it. The storefront sidewalk runs the full paved width
-and holds the cart return, in front of the doors.
+off the east end. The dock and the annex are outside the physics world — dressing
+you walk past, never into. The store itself you walk into, through either door;
+see [Inside the store](#inside-the-store) below. The storefront sidewalk runs the
+full paved width in front of it.
 
 Two pedestrian walkway spines run the depth of the lot, one either side of the
 entrance drive, striped with a crosswalk everywhere they meet a driving aisle.
@@ -211,14 +215,39 @@ red/green dots) — fifteen of them. The signals are demand-actuated: aisles hol
 green until a car on the drive lane actually approaches. Cars stop for red, never
 drive through each other, and a car already inside a crossing always clears it.
 
+### Inside the store
+
+Walk through either door — with or without a cart train — and you're inside.
+The building is windowless from the outside for a reason: what's inside only
+renders and only exists while at least one attendant is actually in there, so
+you never see it from the lot. In two-player, one attendant can be inside
+while the other works the lot; the split screen shows each of you the right
+thing.
+
+Just past the doors is the **vestibule** — checkout counters, and the new
+**CART RETURN**, which moved in off the sidewalk. Push a full train through
+either door and hand it over there, same as the old outdoor drop zone worked.
+Further back are the **aisles**, shelving you have to walk around, with
+shoppers pushing carts up and down them and drifting through checkout —
+cosmetic company, not part of the corral/restock economy outside. Tucked in
+a back corner is the **break room** — table, chairs, and a doorway off the
+main floor.
+
+The break room is where you start the shift, and where you come back to after
+losing a life. Walk in and it tops you back up to three lives, so long as
+you're not already there and it isn't on cooldown (about 50 seconds between
+uses) — so a life lost right outside the vestibule isn't the same setback as
+one lost out in the far corner of the lot.
+
 ## Layout
 
 ```
 index.html          page shell + script tags (classic scripts, so file:// works)
 style.css           page chrome; CSS scales the canvas to the window, and styles the touch sticks
-src/config.js       CFG: lot geometry, lanes, signals, player/cart/ped/power-up tuning, scoring
+src/config.js       CFG: lot + store-interior geometry, lanes, signals, player/cart/ped/power-up tuning, scoring
 src/powerup.js      Powerup: one badge on the ground — its kind, its timer, its pulse
 src/obstacle.js     Obstacle + the kinds registered on it: the lot's moving hazards (angry coworkers)
+src/storePed.js     StorePed: a cosmetic interior shopper — wanders the aisles, drifts through checkout
 src/touch.js        TouchControls: the on-screen sticks and buttons, a DOM layer over the canvas
 src/player.js       LotPlayer: one attendant's sprite, keys, cart train, lives, score, effects
 src/moped.js        MopedPlayer: the versus rider — a LotPlayer that rides instead of pushes
@@ -226,7 +255,7 @@ src/main.js         Phaser.Game boot (arcade physics)
 src/scenes/
   BootScene.js      generates every texture procedurally (placeholder art lives here)
   MenuScene.js      title + solo / co-op / versus select
-  GameScene.js      lot rendering, cameras + minimap, traffic + signals, peds, obstacles, carts, scoring
+  GameScene.js      lot + store-interior rendering, cameras + minimap, traffic + signals, peds, obstacles, carts, scoring
   HudScene.js       per-player score / lives / train, cart counter, timer band, end card
 vendor/phaser.min.js
 assets/             drop real sprites here when they exist
@@ -313,3 +342,16 @@ itself, so nothing in the scene changes.
 minimap size. The mode is chosen at the title screen and read from the registry
 (`mode`: `solo` / `coop` / `versus`), so adding another player means one more
 entry in `GameScene.createPlayers()`.
+
+`interior` is the inside of the store — it shares world coordinates with
+`CFG.store`, so `floor` sits inside it. `vestibule.dropZone` is the actual
+delivery target now (`CFG.dropZone` out on the sidewalk is just a landmark
+coordinate today — the junction ring and the powerup no-drop zone still want
+it). `aisles` are the shelf colliders; `aisleLaneX`/`aisleY` are the lines
+`StorePed` actually walks, so they need to land in the gaps between shelves,
+not on them. `breakRoom` sets the room rect, its door gap (`doorX`/`doorW`),
+and `spawn` — where every attendant starts and respawns — and
+`rechargeCooldownMs` is the gap between free heals there. `GameScene.
+constrainToZone()` is what actually enforces all of this each frame; there's
+no Arcade world-bounds collision on players any more, because no single
+rectangle covers both the lot and the store.

@@ -11,6 +11,7 @@ class MopedPlayer extends LotPlayer {
       canPushCarts: false,
       texture: 'moped',
       spawn: { ...CFG.moped.spawn },
+      zone: 'lot', // an exterior stall — the rider never enters the store
       tint: 0xef5f8c,
       bodyRadius: 11,
       markerRadius: 18,

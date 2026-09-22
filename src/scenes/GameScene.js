@@ -31,9 +31,12 @@ class GameScene extends Phaser.Scene {
     this.pedTarget = CFG.peds.count; // grows a head per lot, like the traffic does
     this.registry.set('gameover', null);
 
+    this.interiorPeds = [];
+
     this.buildIslands();
     this.drawLot();
     this.buildScenery();
+    this.buildInterior();
     this.buildCorrals();
     this.buildTraffic();
     this.buildPeds();
@@ -42,6 +45,7 @@ class GameScene extends Phaser.Scene {
     this.buildPowerups();
     this.buildRestock();
     this.setupCameras();
+    this.syncRoofVisibility(); // players may start inside — hide the roof for them
     this.bindInput();
     this.publish();
   }
@@ -141,7 +145,6 @@ class GameScene extends Phaser.Scene {
     this.drawIslands(g);
     this.drawJunction(g);
     this.drawStore(g);
-    this.drawDropZone();
     this.drawCanopyRoof(); // overhead layer, so it has to come after the rest
   }
 
@@ -253,11 +256,23 @@ class GameScene extends Phaser.Scene {
   }
 
   drawStore(g) {
-    const c = CFG.colors;
-    const s = CFG.store;
-
     this.drawDock(g);
     this.drawAnnex(g);
+    this.drawCanopy(g); // exterior, over the sidewalk — always visible
+    this.buildStoreRoof();
+  }
+
+  // Everything that reads as "you can't see past this" from the parking lot
+  // — the box, its roof furniture, the parapet/door strip and the signage —
+  // moved off the shared lot graphics and onto its own high-depth layer (15,
+  // above the canopy's 14 and players' 8) so it can be hidden per camera the
+  // moment that camera's player is actually inside. See syncRoofVisibility().
+  // An array, not a single object: the signage is separate Text objects.
+  buildStoreRoof() {
+    const c = CFG.colors;
+    const s = CFG.store;
+    const g = this.add.graphics().setDepth(15);
+    this.storeRoof = [g];
 
     // the box itself
     g.fillStyle(c.storeRoof, 1);
@@ -284,31 +299,33 @@ class GameScene extends Phaser.Scene {
     g.fillStyle(c.doors, 1);
     CFG.doors.forEach((d) => g.fillRect(d.x - d.w / 2, s.y + s.h - 22, d.w, 18));
 
-    this.drawCanopy(g);
-
     const signY = s.y + s.h - 76;
     [CFG.doors[0].x + 60, CFG.doors[1].x + 500].forEach((x) => {
       g.fillStyle(c.signBlue, 1);
       g.fillRect(x - 120, signY - 22, 240, 44);
       g.fillStyle(c.signRed, 1);
       g.fillRect(x - 120, signY + 22, 240, 12);
+      this.storeRoof.push(
+        this.add
+          .text(x, signY, 'GROCERY', {
+            fontFamily: 'monospace',
+            fontSize: '26px',
+            color: '#e8eef5',
+          })
+          .setOrigin(0.5)
+          .setDepth(15)
+      );
+    });
+    this.storeRoof.push(
       this.add
-        .text(x, signY, 'GROCERY', {
+        .text(s.x + s.w / 2, s.y + s.h / 2, 'WHOLESALE', {
           fontFamily: 'monospace',
-          fontSize: '26px',
-          color: '#e8eef5',
+          fontSize: '84px',
+          color: '#3f4956',
         })
         .setOrigin(0.5)
-        .setDepth(1);
-    });
-    this.add
-      .text(s.x + s.w / 2, s.y + s.h / 2, 'WHOLESALE', {
-        fontFamily: 'monospace',
-        fontSize: '84px',
-        color: '#3f4956',
-      })
-      .setOrigin(0.5)
-      .setDepth(1);
+        .setDepth(15)
+    );
   }
 
   // Red entry canopy over the west end of the storefront. It is a roof that
@@ -401,8 +418,10 @@ class GameScene extends Phaser.Scene {
       .setDepth(1);
   }
 
-  drawDropZone() {
-    const dz = CFG.dropZone;
+  // The cart return, now in the vestibule just inside the doors — see
+  // buildVestibule(). Same look the exterior one used to have.
+  drawInteriorDropZone() {
+    const dz = CFG.interior.vestibule.dropZone;
     this.add
       .rectangle(dz.x, dz.y, dz.w, dz.h, CFG.colors.dropZone, 0.3)
       .setStrokeStyle(2, CFG.colors.dropZone)
@@ -453,6 +472,111 @@ class GameScene extends Phaser.Scene {
           this.parked.push(car);
         }
       });
+    });
+  }
+
+  // ---------- the store interior ----------
+
+  // The inside of the store: floor, aisle shelving, the vestibule (cart
+  // return + checkout), and the break room. Built once, alongside every
+  // other build*() call in create() — nothing in here moves. It lives in
+  // the same world coordinates as the store box drawn over it
+  // (CFG.interior.floor sits inside CFG.store), so it needs no camera or
+  // world-bounds changes; visibility is handled separately, by hiding that
+  // box per camera — see syncRoofVisibility().
+  buildInterior() {
+    const f = CFG.interior.floor;
+    const g = this.add.graphics().setDepth(0);
+
+    g.fillStyle(0x3a4048, 1);
+    g.fillRect(f.x1, f.y1, f.x2 - f.x1, f.y2 - f.y1);
+
+    this.buildAisles(g);
+    this.buildVestibule(g);
+    this.buildBreakRoom(g);
+  }
+
+  // Shelf units, laid out as columns with a walkable lane either side —
+  // solid, so a player (and a cart train) has to actually thread the aisles
+  // rather than cut through the shelving.
+  buildAisles(g) {
+    CFG.interior.aisles.forEach((a) => {
+      g.fillStyle(0x333941, 1);
+      g.fillRect(a.x, a.y, a.w, a.h);
+      g.fillStyle(0x20242a, 0.6);
+      for (let y = a.y + 20; y < a.y + a.h - 10; y += 40) {
+        g.fillRect(a.x + 6, y, a.w - 12, 4); // shelf slats
+      }
+
+      const zone = this.add.zone(a.x + a.w / 2, a.y + a.h / 2, a.w, a.h);
+      this.physics.add.existing(zone, true);
+      this.scenery.add(zone);
+    });
+  }
+
+  // Just inside the doors: a few checkout counters (interior shoppers queue
+  // here) and the new cart return — see drawInteriorDropZone().
+  buildVestibule(g) {
+    CFG.interior.vestibule.checkout.forEach((c) => {
+      g.fillStyle(0x454c56, 1);
+      g.fillRect(c.x - 45, c.y - 14, 90, 28);
+      g.fillStyle(0x2c3138, 1);
+      g.fillRect(c.x - 45, c.y - 14, 90, 6);
+    });
+    this.drawInteriorDropZone();
+  }
+
+  // The staff break room: a walled-off room with a doorway gap on its south
+  // wall. This is now the attendant's spawn/respawn point, and walking in
+  // heals a lost life on a cooldown — see updateBreakRoom().
+  buildBreakRoom(g) {
+    const b = CFG.interior.breakRoom;
+    g.fillStyle(0x2b3038, 1);
+    g.fillRect(b.x, b.y, b.w, b.h);
+    g.lineStyle(2, 0x4a515c, 0.6);
+    g.strokeRect(b.x, b.y, b.w, b.h);
+
+    // table + four chairs, dead centre
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2 - 10;
+    g.fillStyle(0x5a4632, 1);
+    g.fillRoundedRect(cx - 40, cy - 24, 80, 48, 8);
+    g.fillStyle(0x394048, 1);
+    [
+      [-55, -20],
+      [55, -20],
+      [-55, 20],
+      [55, 20],
+    ].forEach(([dx, dy]) => g.fillCircle(cx + dx, cy + dy, 10));
+
+    this.add
+      .text(cx, b.y + 16, 'BREAK ROOM', {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        color: '#8a97a6',
+      })
+      .setOrigin(0.5)
+      .setDepth(2);
+
+    // Walls, minus the doorway gap on the south side.
+    const t = 10;
+    const walls = [
+      { x: b.x + b.w / 2, y: b.y, w: b.w, h: t }, // north
+      { x: b.x, y: b.y + b.h / 2, w: t, h: b.h }, // west
+      { x: b.x + b.w, y: b.y + b.h / 2, w: t, h: b.h }, // east
+      { x: (b.x + b.doorX) / 2, y: b.y + b.h, w: b.doorX - b.x, h: t }, // south, left of the door
+      {
+        x: (b.doorX + b.doorW + b.x + b.w) / 2,
+        y: b.y + b.h,
+        w: b.x + b.w - (b.doorX + b.doorW),
+        h: t,
+      }, // south, right of the door
+    ];
+    walls.forEach((w) => {
+      if (w.w <= 0 || w.h <= 0) return;
+      const zone = this.add.zone(w.x, w.y, w.w, w.h);
+      this.physics.add.existing(zone, true);
+      this.scenery.add(zone);
     });
   }
 
@@ -575,6 +699,8 @@ class GameScene extends Phaser.Scene {
       g.strokeRect(w.x, w.y, w.width, w.height);
     });
 
+    // The cart return is inside now, but the doors are still the landmark
+    // that matters on the map — that's where a full train needs to head.
     const dz = CFG.dropZone;
     g.fillStyle(0x7fd6a6, 0.9);
     g.fillRect(dz.x - 150, dz.y - 70, 300, 140);
@@ -604,7 +730,7 @@ class GameScene extends Phaser.Scene {
     });
 
     this.players.forEach((p) => {
-      if (!p.alive) return;
+      if (!p.alive || p.zone !== 'lot') return;
       g.fillStyle(0x0e1116, 1);
       g.fillCircle(p.x, p.y, 54);
       g.fillStyle(p.tint, 1);
@@ -1402,6 +1528,124 @@ class GameScene extends Phaser.Scene {
     return this.players.filter((p) => p.alive && p.canPushCarts);
   }
 
+  // ---------- lot / interior zones ----------
+
+  // Is x within either door's gap on the south wall? The lot side and the
+  // interior side share the same x/w, so the two funnels line up.
+  inDoorX(x) {
+    return CFG.doors.some((d) => Math.abs(x - d.x) < d.w / 2);
+  }
+
+  // Keeps a player clamped to whichever floor they're currently on, and
+  // hands them through a door when they walk into one. There's no single
+  // rectangle covering both the lot and the store interior, so — unlike
+  // everything else in the lot — players don't use Arcade's world-bounds
+  // collision at all; this manual clamp replaces it every frame.
+  constrainToZone(p) {
+    const margin = CFG.interior.triggerMargin;
+
+    if (p.zone === 'interior') {
+      const f = CFG.interior.floor;
+      if (p.canPushCarts && p.y > f.y2 - margin && this.inDoorX(p.x)) {
+        this.exitStore(p);
+        return;
+      }
+      p.sprite.x = Phaser.Math.Clamp(p.x, f.x1 + 10, f.x2 - 10);
+      p.sprite.y = Phaser.Math.Clamp(p.y, f.y1 + 10, f.y2 - 10);
+    } else {
+      if (p.canPushCarts && p.y <= CFG.sidewalk.y + margin && this.inDoorX(p.x)) {
+        this.enterStore(p);
+        return;
+      }
+      p.sprite.x = Phaser.Math.Clamp(p.x, CFG.lot.x1 + 8, CFG.lot.x2 - 8);
+      p.sprite.y = Phaser.Math.Clamp(p.y, CFG.sidewalk.y, CFG.lot.y2 - 8);
+    }
+  }
+
+  enterStore(p) {
+    p.zone = 'interior';
+    const d = CFG.doors.find((door) => Math.abs(p.x - door.x) < door.w / 2);
+    p.sprite.setPosition(d ? d.x : p.x, CFG.interior.floor.y2 - 20);
+    p.marker.setPosition(p.x, p.y);
+    p.trail.length = 0;
+    p.inBreakRoom = false;
+    this.syncRoofVisibility();
+    this.publish();
+  }
+
+  exitStore(p) {
+    p.zone = 'lot';
+    const d = CFG.doors.find((door) => Math.abs(p.x - door.x) < door.w / 2);
+    p.sprite.setPosition(d ? d.x : p.x, CFG.sidewalk.y + 20);
+    p.marker.setPosition(p.x, p.y);
+    p.trail.length = 0;
+    this.syncRoofVisibility();
+    this.publish();
+  }
+
+  // Recomputes, per camera, whether the store roof is drawn: hidden for any
+  // camera whose player is inside, shown for the rest. The minimap camera is
+  // never touched here, so the building always reads as a plain block on it.
+  syncRoofVisibility() {
+    if (!this.storeRoof) return;
+    // `cameraFilter` is the bitmask Camera.ignore() sets bits on; clearing it
+    // back to 0 is the only way to undo an ignore (Phaser has no built-in
+    // "un-ignore"), then each interior camera sets its own bit again.
+    this.storeRoof.forEach((o) => {
+      o.cameraFilter = 0;
+    });
+    this.views.forEach((cam, i) => {
+      const p = this.players[i];
+      if (p && p.zone === 'interior') cam.ignore(this.storeRoof);
+    });
+  }
+
+  // Edge-triggered — fires only the frame a player arrives in the break
+  // room, not every frame they stand in it.
+  updateBreakRoom(p, now) {
+    const b = CFG.interior.breakRoom;
+    const inside =
+      p.zone === 'interior' && p.x > b.x && p.x < b.x + b.w && p.y > b.y && p.y < b.y + b.h;
+
+    if (inside && !p.inBreakRoom) {
+      if (p.lives < CFG.lives && now >= p.nextRechargeAt) {
+        p.lives += 1;
+        p.nextRechargeAt = now + CFG.interior.rechargeCooldownMs;
+        this.banner(p.x, p.y, 'RECHARGED', '#7fd6a6');
+        this.publish();
+      } else if (p.lives >= CFG.lives) {
+        this.banner(p.x, p.y, 'BREAK ROOM', '#8a97a6');
+      } else {
+        const left = Math.ceil((p.nextRechargeAt - now) / 1000);
+        this.banner(p.x, p.y, `ON BREAK ${left}s`, '#8a97a6');
+      }
+    }
+    p.inBreakRoom = inside;
+  }
+
+  // ---------- interior shoppers (cosmetic) ----------
+
+  anyoneInside() {
+    return this.players.some((p) => p.zone === 'interior');
+  }
+
+  updateInteriorPeds(now) {
+    const inside = this.anyoneInside();
+    if (inside && this.interiorPeds.length === 0) this.buildInteriorPeds();
+    if (!inside && this.interiorPeds.length > 0) this.clearInteriorPeds();
+    if (inside) this.interiorPeds.forEach((sp) => sp.update(now));
+  }
+
+  buildInteriorPeds() {
+    const n = 7;
+    for (let i = 0; i < n; i++) this.interiorPeds.push(new StorePed(this));
+  }
+
+  clearInteriorPeds() {
+    this.interiorPeds.forEach((sp) => sp.destroy());
+    this.interiorPeds = [];
+  }
+
   tryPickup(p, now) {
     if (p.train.length >= p.maxTrain(now)) return;
     const cart = this.carts.find(
@@ -1422,7 +1666,7 @@ class GameScene extends Phaser.Scene {
 
   tryDeliver(p) {
     if (p.train.length === 0) return;
-    const dz = CFG.dropZone;
+    const dz = CFG.interior.vestibule.dropZone;
     if (Math.abs(p.x - dz.x) > dz.w / 2 + 10 || Math.abs(p.y - dz.y) > dz.h / 2 + 16) {
       return;
     }
@@ -1568,7 +1812,7 @@ class GameScene extends Phaser.Scene {
           ? this.randomLotPoint()
           : this.randomWalkPoint();
       if (this.inIsland(p.x, p.y) || this.inCorral(p.x, p.y)) continue;
-      // Not on top of the return zone, another badge, or anyone's feet.
+      // Not right in the doorway, on top of another badge, or anyone's feet.
       const dz = CFG.dropZone;
       if (Math.abs(p.x - dz.x) < 240 && Math.abs(p.y - dz.y) < 130) continue;
       if (this.powerups.some((q) => Phaser.Math.Distance.Between(q.x, q.y, p.x, p.y) < 260)) {
@@ -1914,6 +2158,7 @@ class GameScene extends Phaser.Scene {
         effects: p.activeEffects(now).map((e) => ({ label: e.label, left: e.left })),
         takedowns: p.takedowns || 0,
         alive: p.alive,
+        zone: p.zone,
       })),
     });
   }
@@ -1932,15 +2177,20 @@ class GameScene extends Phaser.Scene {
     this.updateRestock(time);
     this.updatePowerups(time);
     this.updateObstacles(time);
+    this.updateInteriorPeds(time);
 
     this.players.forEach((p) => {
       p.handleInput(time, dt);
       p.updateTrain();
       p.updateEffects(time);
+      this.constrainToZone(p);
       if (!p.alive || !p.canPushCarts) return;
 
-      this.tryPickup(p, time);
-      this.tryDeliver(p);
+      if (p.zone === 'lot') this.tryPickup(p, time);
+      if (p.zone === 'interior') {
+        this.tryDeliver(p);
+        this.updateBreakRoom(p, time);
+      }
 
       // Step off the respawn point and the rider can hit you again.
       if (
@@ -1963,7 +2213,7 @@ class GameScene extends Phaser.Scene {
     }
 
     for (const p of this.players) {
-      if (!p.alive || !p.canPushCarts || time < p.invulnUntil) continue;
+      if (!p.alive || !p.canPushCarts || p.zone !== 'lot' || time < p.invulnUntil) continue;
 
       if (this.hitByTraffic(p)) {
         if (!this.absorbHit(p, time)) this.runOver(p, time);

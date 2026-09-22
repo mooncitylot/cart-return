@@ -57,9 +57,10 @@ class HudScene extends Phaser.Scene {
     const power = (p.effects || [])
       .map((e) => `${e.label} ${Math.ceil(e.left / 1000)}s`)
       .join(' ');
-    const line = `${score}   ${'♥'.repeat(p.lives)}   PUSHING ${p.train}/${
+    let line = `${score}   ${'♥'.repeat(p.lives)}   PUSHING ${p.train}/${
       p.maxTrain || maxTrain
     }`;
+    if (p.zone === 'interior') line += '   IN STORE';
     return power ? `${line}   ${power}` : line;
   }
 

@@ -12,9 +12,15 @@ class LotPlayer {
     // the keys, so a tablet player can pick up a bluetooth keyboard mid-shift.
     this.sticks = opts.sticks || [];
 
-    // Solo starts dead centre of the return zone; two players start either side.
+    // Solo starts dead centre of the break room; two players start either side.
+    // (The moped passes its own exterior spawn and never reads this.)
     const offset = scene.playerCount > 1 ? (index === 0 ? -60 : 60) : 0;
-    this.spawn = opts.spawn || { x: CFG.dropZone.x + offset, y: CFG.player.spawn.y };
+    const br = CFG.interior.breakRoom.spawn;
+    this.spawn = opts.spawn || { x: br.x + offset, y: br.y };
+    // 'lot' or 'interior' — which floor the player is currently clamped to.
+    // GameScene.constrainToZone() does the clamping; nothing here reads it
+    // except as the default for a fresh spawn.
+    this.zone = opts.zone || 'interior';
 
     this.tint = opts.tint || (index === 0 ? 0x6bd6a5 : 0xf5b45f);
     this.sprite = scene.physics.add
@@ -26,7 +32,9 @@ class LotPlayer {
       this.sprite.width / 2 - body,
       this.sprite.height / 2 - body
     );
-    this.sprite.setCollideWorldBounds(true);
+    // No single rectangle covers both the lot and the store interior, so the
+    // scene clamps position itself each frame (GameScene.constrainToZone)
+    // instead of relying on Arcade's world-bounds check.
 
     // Ring under the feet: tells you apart from the shoppers at a glance.
     this.marker = scene.add
@@ -46,6 +54,11 @@ class LotPlayer {
     // Held until the attendant walks clear of their respawn point, so the
     // rider can't camp the return zone and farm the same player.
     this.spawnSafe = true;
+
+    // Break-room recharge: edge-triggered (GameScene checks this against
+    // last frame), and gated on a cooldown once it fires.
+    this.inBreakRoom = false;
+    this.nextRechargeAt = 0;
 
     // Power-up effects: kind -> the timestamp it runs out at. Wiped on respawn,
     // so losing a life costs you whatever you were carrying.
@@ -226,6 +239,14 @@ class LotPlayer {
     this.trail.length = 0;
     this.stunUntil = now + 300;
     this.invulnUntil = now + invulnMs;
+
+    // Respawn is the break room now, so an attendant always comes back
+    // inside. Reset the edge-trigger so arriving there is read as a fresh
+    // entry — if the recharge is off cooldown, that hands the life right
+    // back; see GameScene.updateBreakRoom().
+    this.zone = 'interior';
+    this.inBreakRoom = false;
+    if (this.scene.syncRoofVisibility) this.scene.syncRoofVisibility();
   }
 
   eliminate() {

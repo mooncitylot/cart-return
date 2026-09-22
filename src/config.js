@@ -43,7 +43,62 @@ const CFG = {
     { x: 1700, w: 180 }, // entry
     { x: 2010, w: 180 }, // exit
   ],
-  dropZone: { x: 1855, y: 1137, w: 300, h: 62 }, // centre x/y — push carts here
+  // No longer the delivery target — the cart return moved inside, into the
+  // vestibule (see `interior` below). This is just a landmark coordinate:
+  // the entrance-drive junction ring and the "don't drop a power-up right in
+  // the doorway" check both want a point near the doors.
+  dropZone: { x: 1855, y: 1137, w: 300, h: 62 },
+
+  // The inside of the store. It lives in the same world coordinates as the
+  // store box above (x820-2980, y150-1080) — nothing else occupies that
+  // footprint, so the interior floor is simply what's under the roof.
+  // Walking through a door on the south wall (same x/w as `doors`) crosses
+  // between this and the lot; see GameScene.constrainToZone().
+  interior: {
+    floor: { x1: 860, y1: 190, x2: 2940, y2: 1075 },
+    triggerMargin: 14, // how close to a door edge counts as "at it"
+
+    // Just inside the doors: the new cart return, plus a few checkout
+    // counters — real stores put the corral and the checkout lanes in the
+    // same front strip, and it's what "checking out at the front" wants.
+    vestibule: {
+      dropZone: { x: 1855, y: 980, w: 300, h: 62 },
+      checkout: [
+        { x: 1560, y: 930 },
+        { x: 1855, y: 930 },
+        { x: 2150, y: 930 },
+      ],
+    },
+
+    // Shelf units further back, laid out as columns with a walkable lane
+    // either side of each one — interior shoppers walk the lane axis, "up
+    // and down the aisles". x/y is the top-left corner, like `islands`.
+    aisles: [
+      { x: 1350, y: 430, w: 110, h: 380 },
+      { x: 1650, y: 430, w: 110, h: 380 },
+      { x: 1950, y: 430, w: 110, h: 380 },
+      { x: 2250, y: 430, w: 110, h: 380 },
+      { x: 2550, y: 430, w: 110, h: 380 },
+    ],
+    // The walkable lane centrelines either side of those shelf columns —
+    // what interior shoppers actually walk up and down (see StorePed).
+    aisleLaneX: [1250, 1500, 1800, 2100, 2400, 2700],
+    aisleY: { top: 400, bottom: 860 },
+
+    // A walled-off staff room in the back corner, with a doorway gap on its
+    // south wall. This is where an attendant now spawns and respawns, and
+    // walking in heals a lost life on a cooldown.
+    breakRoom: {
+      x: 900,
+      y: 200,
+      w: 300,
+      h: 220,
+      doorX: 1000, // gap in the south wall, [doorX, doorX+doorW]
+      doorW: 80,
+      spawn: { x: 1040, y: 380 },
+    },
+    rechargeCooldownMs: 50000,
+  },
 
   // ---- parking ----
   // Two stall fields either side of the entrance drive. Stalls are laid out in
