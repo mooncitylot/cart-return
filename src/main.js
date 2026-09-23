@@ -4,6 +4,7 @@ const game = new Phaser.Game({
   width: CFG.view.w,
   height: CFG.view.h + CFG.hudHeight,
   backgroundColor: '#0e1116',
+  antialiasGL: false,
   physics: {
     default: 'arcade',
     arcade: { gravity: { x: 0, y: 0 }, debug: false },

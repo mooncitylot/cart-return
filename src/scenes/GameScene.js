@@ -33,6 +33,9 @@ class GameScene extends Phaser.Scene {
 
     this.interiorPeds = [];
 
+    // Static Graphics that sit under everyone collect here as they are
+    // built, then get baked into textures in one pass — see bakeGround().
+    this.groundLayers = [];
     this.buildIslands();
     this.planLighting(); // before the cars: a pole costs a stall nose
     this.drawLot();
@@ -41,6 +44,8 @@ class GameScene extends Phaser.Scene {
     this.buildInterior();
     this.buildDoors();
     this.buildCorrals();
+    this.bakeGround();
+    this.watchContextLoss();
     this.buildForklift();
     this.buildTraffic();
     this.buildPeds();
@@ -52,6 +57,85 @@ class GameScene extends Phaser.Scene {
     this.syncRoofVisibility(); // players may start inside — hide the roof for them
     this.bindInput();
     this.publish();
+  }
+
+  // ---------- render cost ----------
+
+  // Phaser replays a Graphics object's whole command list every frame, for
+  // every camera — and the ground under the lot is well over a hundred
+  // thousand commands. None of it ever changes after create(), so it is
+  // drawn once into textures here and the Graphics thrown away.
+  //
+  // Everything at depth 0-2 goes into one set of tiles, in the order it
+  // would have rendered in (the sort is stable, so ties keep build order).
+  // The few Text/Rectangle labels at depth 1-2 end up over the light pools
+  // and corrals rather than under them, which none of them overlap.
+  bakeGround() {
+    const layers = this.groundLayers.sort((a, b) => a.depth - b.depth);
+    this.groundLayers = null;
+    const world = { x: 0, y: 0, w: CFG.width, h: CFG.height };
+    this.groundTiles = this.bakeGraphics(layers, world, 0, 'ground');
+  }
+
+  // Baked tiles only exist on the GPU. If a phone drops the WebGL context
+  // (backgrounded too long, memory pressure) they come back blank, and the
+  // Graphics they were drawn from are gone — so rebuild the lot from scratch.
+  watchContextLoss() {
+    if (this.renderer.type !== Phaser.WEBGL) return;
+    const rebuild = () => this.scene.restart();
+    this.renderer.once('restorewebgl', rebuild);
+    this.events.once('shutdown', () => this.renderer.off('restorewebgl', rebuild));
+  }
+
+  // Renders `layers` over `rect` into a grid of tiles, adds each as a culled
+  // image at `depth`, then destroys the layers. Tiles rather than one big
+  // texture: it keeps every texture under small mobile GPU limits and lets
+  // each camera skip the tiles it cannot see.
+  bakeGraphics(layers, rect, depth, key) {
+    const T = 512;
+    const alpha = layers[0].alpha;
+    const images = [];
+    for (let ty = rect.y; ty < rect.y + rect.h; ty += T) {
+      for (let tx = rect.x; tx < rect.x + rect.w; tx += T) {
+        const k = `${key}-${tx}-${ty}`;
+        // Restarts rebuild the lot (the parked cars are random), so any
+        // tile from a previous run is replaced, not reused.
+        if (this.textures.exists(k)) this.textures.remove(k);
+        const w = Math.min(T, rect.x + rect.w - tx);
+        const h = Math.min(T, rect.y + rect.h - ty);
+        const tex = this.textures.addDynamicTexture(k, w, h);
+        layers.forEach((g) => tex.draw(g, g.x - tx, g.y - ty));
+        images.push(
+          this.cullable(this.add.image(tx, ty, k).setOrigin(0).setDepth(depth).setAlpha(alpha))
+        );
+      }
+    }
+    layers.forEach((g) => g.destroy());
+    return images;
+  }
+
+  // Per-camera culling: Phaser draws everything on the display list for
+  // every camera whether it is on screen or not, so this makes an object
+  // skip any camera whose view it is outside of. Static objects measure
+  // their bounds once; moving ones pass `r`, a radius around their centre,
+  // which is checked live. The minimap sees the whole world, so it still
+  // gets everything.
+  cullable(obj, r) {
+    const base = obj.willRender;
+    const pad = 8;
+    let b = null;
+    if (r === undefined) {
+      const gb = obj.getBounds();
+      b = { x1: gb.x - pad, y1: gb.y - pad, x2: gb.right + pad, y2: gb.bottom + pad };
+    }
+    obj.willRender = function (cam) {
+      if (!base.call(this, cam)) return false;
+      const v = cam.worldView;
+      if (b) return b.x2 >= v.x && b.x1 <= v.right && b.y2 >= v.y && b.y1 <= v.bottom;
+      const m = r + pad;
+      return this.x + m >= v.x && this.x - m <= v.right && this.y + m >= v.y && this.y - m <= v.bottom;
+    };
+    return obj;
   }
 
   // ---------- lot geometry ----------
@@ -126,6 +210,7 @@ class GameScene extends Phaser.Scene {
     const c = CFG.colors;
     const half = CFG.laneWidth / 2;
     const g = this.add.graphics().setDepth(0);
+    this.groundLayers.push(g);
 
     // landscaping everywhere, then asphalt punched over the lot itself
     this.drawLandscaping(g);
@@ -390,10 +475,14 @@ class GameScene extends Phaser.Scene {
   buildLotLighting() {
     const L = CFG.lighting;
     const pools = this.add.graphics().setDepth(2);
-    const poles = this.add.graphics().setDepth(12);
+    this.groundLayers.push(pools);
+    const poleKey = this.makePoleTexture(L);
+    this.poleImages = [];
+    const pole = (x, y) =>
+      this.poleImages.push(this.cullable(this.add.image(x, y, poleKey).setDepth(12)));
     this.lightPoles.forEach((p) => {
       this.drawLightPool(pools, p.x, p.y, L.poolR);
-      this.drawLightPole(poles, p.x, p.y, L);
+      pole(p.x, p.y);
 
       const zone = this.add.zone(p.x, p.y, L.baseR * 2, L.baseR * 2);
       this.physics.add.existing(zone, true);
@@ -409,8 +498,22 @@ class GameScene extends Phaser.Scene {
       [CFG.dock.x + 90, CFG.dock.y + CFG.dock.h - 120],
     ].forEach(([x, y]) => {
       this.drawLightPool(pools, x, y, L.poolR * 0.9);
-      this.drawLightPole(poles, x, y, L);
+      pole(x, y);
     });
+  }
+
+  // Every pole is the same pole, so it is drawn once into a texture and
+  // stamped, rather than replayed as ~800 graphics commands a frame.
+  makePoleTexture(L) {
+    const key = 'lightPole';
+    if (this.textures.exists(key)) return key;
+    const w = (L.headSpan + 8 + 20) * 2 + 4;
+    const h = 36;
+    const g = this.make.graphics({ add: false });
+    this.drawLightPole(g, w / 2, h / 2, L);
+    g.generateTexture(key, w, h);
+    g.destroy();
+    return key;
   }
 
   // The pool itself: stacked rings of warm light, brightest under the pole
@@ -742,6 +845,16 @@ class GameScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setDepth(15)
     );
+
+    // Swap the graphics for baked tiles, keeping its slot in storeRoof so
+    // syncRoofVisibility() hides the tiles exactly as it hid the graphics.
+    // The tiles go on the display list last, so the signage is lifted back
+    // over them — same depth, and ties draw in list order.
+    const labels = this.storeRoof.slice(1);
+    const rect = { x: s.x, y: s.y, w: s.w + 16, h: s.h + 18 }; // + the shadow
+    const tiles = this.bakeGraphics([g], rect, 15, 'roof');
+    labels.forEach((t) => this.children.bringToTop(t));
+    this.storeRoof = [...tiles, ...labels];
   }
 
   // The entry doors: two glass panels per doorway that slide apart when
@@ -1075,6 +1188,7 @@ class GameScene extends Phaser.Scene {
 
     this.parked = [];
     const shadows = this.add.graphics().setDepth(2);
+    this.groundLayers.push(shadows);
     const jitter = CFG.stallJitter;
 
     CFG.stallRows.forEach((row, rowIndex) => {
@@ -1105,6 +1219,7 @@ class GameScene extends Phaser.Scene {
             .setDepth(3)
             .setFlipY(rowIndex % 2 === 1);
           car.refreshBody();
+          this.cullable(car);
 
           // What actually lifts a car off the asphalt: the shade under it,
           // thrown the same way everything else on the site throws its own.
@@ -1138,6 +1253,7 @@ class GameScene extends Phaser.Scene {
   // hiding that box per camera — see syncRoofVisibility().
   buildInterior() {
     const g = this.add.graphics().setDepth(0);
+    this.groundLayers.push(g);
 
     this.drawInteriorFloor(g);
     this.drawInteriorShell(g);
@@ -2087,6 +2203,7 @@ class GameScene extends Phaser.Scene {
 
   buildCorrals() {
     const g = this.add.graphics().setDepth(1);
+    this.groundLayers.push(g);
     this.carts = [];
 
     const c = CFG.colors;
@@ -2132,7 +2249,7 @@ class GameScene extends Phaser.Scene {
 
   addCart(x, y, home) {
     const cart = {
-      sprite: this.add.image(x, y, 'cart').setDepth(4),
+      sprite: this.cullable(this.add.image(x, y, 'cart').setDepth(4), 24),
       home,
       state: 'idle',
       claimedBy: null,
@@ -2211,7 +2328,40 @@ class GameScene extends Phaser.Scene {
       .setName('minimap');
     // No bounds: the map is zoomed out past the world, so it just sits centred.
     this.minimap.centerOn(CFG.width / 2, CFG.height / 2);
+    this.bakeMinimapBase(zoom);
     this.drawBlips();
+  }
+
+  // At map scale the whole world is on screen, so drawing the ground tiles
+  // there means sampling every one of them, full size, every frame. The
+  // parts that never move — ground, parked cars, poles — are shrunk into a
+  // single map-sized texture once instead, and the minimap is told to skip
+  // the originals. The roof stays live on the map so it still covers
+  // whoever is inside the store.
+  bakeMinimapBase(zoom) {
+    const key = 'minimapBase';
+    if (this.textures.exists(key)) this.textures.remove(key);
+    const tex = this.textures.addDynamicTexture(
+      key,
+      Math.ceil(CFG.width * zoom),
+      Math.ceil(CFG.height * zoom)
+    );
+    const statics = [...this.groundTiles, ...this.parked, ...this.poleImages];
+    statics.forEach((o) => {
+      const sx = o.scaleX;
+      const sy = o.scaleY;
+      o.setScale(sx * zoom, sy * zoom);
+      tex.draw(o, o.x * zoom, o.y * zoom);
+      o.setScale(sx, sy);
+    });
+    this.minimap.ignore(statics);
+
+    const base = this.add
+      .image(0, 0, key)
+      .setOrigin(0)
+      .setScale(1 / zoom)
+      .setDepth(-1);
+    this.views.forEach((cam) => cam.ignore(base));
   }
 
   drawBlips() {
@@ -2368,6 +2518,7 @@ class GameScene extends Phaser.Scene {
         ? this.add.image(coord, lane.pos, key).setFlipX(lane.dir === -1)
         : this.add.image(lane.pos, coord, key).setAngle(lane.dir === 1 ? 90 : -90);
     sprite.setDepth(7);
+    this.cullable(sprite, Math.max(sprite.width, sprite.height) / 2);
 
     // Park off-lane spawns clear of the despawn margin, which scales with the
     // car's own length — otherwise a short car is culled the frame it appears.
@@ -2604,6 +2755,7 @@ class GameScene extends Phaser.Scene {
     const ped = this.peds
       .create(spot.x, spot.y, Phaser.Utils.Array.GetRandom(BootScene.PED_KEYS))
       .setDepth(6);
+    this.cullable(ped, 24);
     ped.body.setCircle(9, 5, 3);
     ped.setCollideWorldBounds(true);
     ped.cart = null;
